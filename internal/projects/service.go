@@ -141,7 +141,7 @@ func (s *Service) Update(ctx context.Context, actor uuid.UUID, id string, input 
 	if err != nil {
 		return Project{}, err
 	}
-	if err = notifications.Enqueue(ctx, tx, notifications.Event{ProjectID: id, ActorID: actor, Kind: "project.updated", Title: "Project updated", Message: "Project details were updated for " + id + "."}, nil); err != nil {
+	if err = notifications.Create(ctx, tx, notifications.Input{ProjectID: id, ActorID: actor, Kind: "project.updated", Title: "Project updated", Message: "Project details were updated for " + id + "."}, nil); err != nil {
 		return Project{}, err
 	}
 	if err = tx.Commit(ctx); err != nil {

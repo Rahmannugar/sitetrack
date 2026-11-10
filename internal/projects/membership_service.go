@@ -82,7 +82,7 @@ func (s *Service) ChangeMember(ctx context.Context, actor uuid.UUID, id string, 
 	if admin == nil {
 		kind, title = "project.member_removed", "Project member removed"
 	}
-	if err = notifications.Enqueue(ctx, tx, notifications.Event{ProjectID: id, ActorID: actor, Kind: kind, Title: title, Message: "Project membership changed for " + id + "."}, nil); err != nil {
+	if err = notifications.Create(ctx, tx, notifications.Input{ProjectID: id, ActorID: actor, Kind: kind, Title: title, Message: "Project membership changed for " + id + "."}, nil); err != nil {
 		return err
 	}
 	err = tx.Commit(ctx)

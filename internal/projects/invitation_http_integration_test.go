@@ -5,41 +5,19 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
-	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
-	"sitetrack/internal/config"
 	"sitetrack/internal/infra/openapi"
-	"sitetrack/internal/infra/outbox"
-	outboxdb "sitetrack/internal/infra/outbox/repositories/generated"
-	"sitetrack/internal/infra/telemetry"
 	"sitetrack/internal/notifications"
 )
 
-func TestInvitationAndNotificationHTTPPaginationAndMixedWorkerBatch(t *testing.T) {
+func TestInvitationAndNotificationHTTPPagination(t *testing.T) {
 	f := projectTest(t)
 	ctx := context.Background()
-	feed, _ := notificationFlow(t, f)
+	feed := notificationFlow(t, f)
 	p := f.create(t, "Pagination Site")
-	monitoring, err := telemetry.New(ctx, config.Telemetry{}, "mixed-worker-test", io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var emails atomic.Int32
-	worker, err := outbox.NewWorker(f.s.pool, map[string]outbox.Handler{
-		"notification.project": notifications.NewWorker(f.s.pool).Handle,
-		"email.verification":   func(context.Context, outbox.Job) (outbox.Result, error) { emails.Add(1); return outbox.Result{}, nil },
-	}, nil, monitoring)
-	if err != nil {
-		t.Fatal(err)
-	}
-	emailJob := uuid.Must(uuid.NewV7())
-	defer func() { _, _ = f.s.pool.Exec(ctx, "DELETE FROM sitetrack.outbox_events WHERE id=$1", emailJob) }()
-	for index := range 25 {
+	for range 25 {
 		invite, err := f.s.Invite(ctx, f.users[0], p.ID, f.users[1])
 		if err != nil {
 			t.Fatal(err)
@@ -47,24 +25,15 @@ func TestInvitationAndNotificationHTTPPaginationAndMixedWorkerBatch(t *testing.T
 		if _, err = f.s.Withdraw(ctx, f.users[0], p.ID, invite.ID); err != nil {
 			t.Fatal(err)
 		}
-		if index == 9 {
-			if err = outboxdb.New(f.s.pool).Enqueue(ctx, outboxdb.EnqueueParams{ID: emailJob, AggregateID: f.users[0].String(), EventType: "email.verification", Payload: []byte("dispatch test"), ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(time.Minute), Valid: true}}); err != nil {
-				t.Fatal(err)
-			}
-		}
 	}
-	if count, err := worker.SendBatch(ctx); err != nil || count != 20 || emails.Load() != 1 {
-		t.Fatal("mixed batch did not share twenty slots", count, err, emails.Load())
-	}
-	dispatch(t, worker)
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	contracts := openapi.New()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	if err = Register(router.Group(""), f.s, f.accounts, contracts, false, logger); err != nil {
+	if err := Register(router.Group(""), f.s, f.accounts, contracts, false, logger); err != nil {
 		t.Fatal(err)
 	}
-	if err = notifications.Register(router.Group(""), router.Group(""), feed, f.accounts, contracts, false, logger); err != nil {
+	if err := notifications.Register(router.Group(""), router.Group(""), feed, f.accounts, contracts, false, logger); err != nil {
 		t.Fatal(err)
 	}
 	adminToken, inviteeToken := token(t, f, 0), token(t, f, 1)
@@ -73,7 +42,8 @@ func TestInvitationAndNotificationHTTPPaginationAndMixedWorkerBatch(t *testing.T
 		t.Fatal(result.Code, result.Body)
 	}
 	var page notifications.Page
-	if err = json.Unmarshal(result.Body.Bytes(), &page); err != nil {
+	var err error
+	if err := json.Unmarshal(result.Body.Bytes(), &page); err != nil {
 		t.Fatal(err)
 	}
 	if len(page.Items) != 20 || page.NextCursor == "" || page.UnreadCount != 25 {
@@ -88,7 +58,7 @@ func TestInvitationAndNotificationHTTPPaginationAndMixedWorkerBatch(t *testing.T
 	if result.Code != 200 {
 		t.Fatal(result.Code, result.Body)
 	}
-	if err = json.Unmarshal(result.Body.Bytes(), &page); err != nil || len(page.Items) != 5 || page.NextCursor != "" {
+	if err := json.Unmarshal(result.Body.Bytes(), &page); err != nil || len(page.Items) != 5 || page.NextCursor != "" {
 		t.Fatal("notification cursor skipped or repeated rows", err)
 	}
 	result = perform(router, "GET", "/projects/"+p.ID+"/invitations?status=all", adminToken, "")

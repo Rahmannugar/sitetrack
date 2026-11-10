@@ -100,7 +100,6 @@ func projectTest(t *testing.T) *fixture {
 		for _, statement := range []string{
 			"UPDATE sitetrack.projects SET deleted_at=now() WHERE id=ANY($1)",
 			"DELETE FROM sitetrack.notifications WHERE project_id=ANY($1)",
-			"DELETE FROM sitetrack.outbox_events WHERE aggregate_id=ANY($1) AND event_type='notification.project'",
 			"DELETE FROM sitetrack.project_invitations WHERE project_id=ANY($1)",
 			"DELETE FROM sitetrack.project_stores WHERE project_id=ANY($1)",
 			"DELETE FROM sitetrack.project_memberships WHERE project_id=ANY($1)",

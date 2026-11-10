@@ -56,8 +56,8 @@ func (s *Service) Invite(ctx context.Context, actor uuid.UUID, project string, t
 	if err != nil {
 		return Invitation{}, err
 	}
-	event := notifications.Event{ProjectID: project, ActorID: actor, InvitationID: uuid.NullUUID{UUID: id, Valid: true}, Kind: "project.invitation", Title: "Project invitation", Message: "You have been invited to " + project + "."}
-	if err = notifications.Enqueue(ctx, tx, event, &target); err != nil {
+	event := notifications.Input{ProjectID: project, ActorID: actor, InvitationID: uuid.NullUUID{UUID: id, Valid: true}, Kind: "project.invitation", Title: "Project invitation", Message: "You have been invited to " + project + "."}
+	if err = notifications.Create(ctx, tx, event, &target); err != nil {
 		return Invitation{}, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -136,7 +136,10 @@ func (s *Service) Respond(ctx context.Context, actor, id uuid.UUID, action strin
 		if err = q.CreateMembership(ctx, projectdb.CreateMembershipParams{ProjectID: project, UserID: actor, IsAdmin: false}); err != nil {
 			return Invitation{}, err
 		}
-		if err = notifications.Enqueue(ctx, tx, notifications.Event{ProjectID: project, ActorID: actor, Kind: "project.member_joined", Title: "Project member joined", Message: "A new member joined " + project + "."}, nil); err != nil {
+		if err = notifications.LockProjectStreams(ctx, tx, project); err != nil {
+			return Invitation{}, err
+		}
+		if err = notifications.Create(ctx, tx, notifications.Input{ProjectID: project, ActorID: actor, Kind: "project.member_joined", Title: "Project member joined", Message: "A new member joined " + project + "."}, nil); err != nil {
 			return Invitation{}, err
 		}
 	}

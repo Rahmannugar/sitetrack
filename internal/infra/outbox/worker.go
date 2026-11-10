@@ -45,8 +45,8 @@ func NewWorker(pool *pgxpool.Pool, handlers map[string]Handler, maintenance func
 	if pool.Config().MaxConns < 2 {
 		return nil, errors.New("worker database pool requires at least two connections")
 	}
-	if len(handlers) == 0 {
-		return nil, errors.New("outbox handlers are required")
+	if len(handlers) == 0 && maintenance == nil {
+		return nil, errors.New("outbox handlers or maintenance are required")
 	}
 	counter, err := monitoring.Meter.Int64Counter("outbox.processing.outcomes")
 	if err != nil {

@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"log/slog"
@@ -94,17 +95,44 @@ func (s *Service) Unread(ctx context.Context, actor uuid.UUID) (int64, error) {
 func (s *Service) Read(ctx context.Context, actor, id uuid.UUID) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	count, err := notificationdb.New(s.pool).ReadNotification(ctx, notificationdb.ReadNotificationParams{Actor: actor, ID: id})
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer rollback(tx)
+	q := notificationdb.New(tx)
+	if err = q.LockStreams(ctx, []uuid.UUID{actor}); err != nil {
+		return err
+	}
+	count, err := q.ReadNotification(ctx, notificationdb.ReadNotificationParams{Actor: actor, ID: id})
 	if err != nil {
 		return err
 	}
 	if count == 0 {
 		return ErrNotFound
 	}
-	return nil
+	return tx.Commit(ctx)
 }
 func (s *Service) ReadAll(ctx context.Context, actor uuid.UUID) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	return notificationdb.New(s.pool).ReadAllNotifications(ctx, actor)
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer rollback(tx)
+	q := notificationdb.New(tx)
+	if err = q.LockStreams(ctx, []uuid.UUID{actor}); err != nil {
+		return err
+	}
+	if err = q.ReadAllNotifications(ctx, actor); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func rollback(tx pgx.Tx) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	_ = tx.Rollback(ctx)
 }

@@ -77,7 +77,7 @@ func notificationFrame(t *testing.T, reader *bufio.Reader) (streamFrame, []notif
 func TestNotificationStreamReplayAccessAndSessionRevocation(t *testing.T) {
 	f := projectTest(t)
 	ctx := context.Background()
-	feed, worker := notificationFlow(t, f)
+	feed := notificationFlow(t, f)
 	p := f.create(t, "Streaming Site")
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
@@ -124,7 +124,6 @@ func TestNotificationStreamReplayAccessAndSessionRevocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dispatch(t, worker)
 	frame, items := notificationFrame(t, reader)
 	if len(items) != 1 || items[0].Invitation == nil || items[0].Invitation.ID != invite.ID {
 		t.Fatal("live invitation was not delivered")
@@ -135,7 +134,6 @@ func TestNotificationStreamReplayAccessAndSessionRevocation(t *testing.T) {
 	if _, err = f.s.Respond(ctx, f.users[1], invite.ID, "accept"); err != nil {
 		t.Fatal(err)
 	}
-	dispatch(t, worker)
 	resumed := connect(cursor)
 	defer resumed.Body.Close()
 	reader = bufio.NewReader(resumed.Body)
@@ -155,7 +153,6 @@ func TestNotificationStreamReplayAccessAndSessionRevocation(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	dispatch(t, worker)
 	seen := map[uuid.UUID]bool{}
 	for len(seen) < 25 {
 		_, items = notificationFrame(t, reader)
@@ -175,7 +172,6 @@ func TestNotificationStreamReplayAccessAndSessionRevocation(t *testing.T) {
 	if _, err = f.s.Update(ctx, f.users[0], p.ID, Input{Name: "After Logout", StartDate: p.StartDate, EndDate: p.EndDate}); err != nil {
 		t.Fatal(err)
 	}
-	dispatch(t, worker)
 	for {
 		frame := nextFrame(t, reader)
 		if frame.event == "session_expired" {

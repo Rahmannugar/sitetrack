@@ -14,7 +14,6 @@ import (
 	"sitetrack/internal/infra/email"
 	"sitetrack/internal/infra/outbox"
 	"sitetrack/internal/infra/telemetry"
-	"sitetrack/internal/notifications"
 )
 
 func main() {
@@ -64,8 +63,7 @@ func run(ctx context.Context, bootstrap *slog.Logger) error {
 		monitoring.Logger.Warn("verification email processing awaits a Resend API key")
 	}
 	verification := authentication.NewVerificationWorker(pool, cipher, sender, monitoring)
-	notification := notifications.NewWorker(pool)
-	handlers := map[string]outbox.Handler{"notification.project": notification.Handle}
+	handlers := make(map[string]outbox.Handler)
 	// We leave email jobs queued while the provider is unconfigured.
 	if sender != nil {
 		handlers["email.verification"] = verification.Handle

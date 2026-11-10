@@ -21,7 +21,7 @@ func invitationContract(id, summary string, body, path *jsonschema.Schema, admin
 }
 func inviteContract(body, path *jsonschema.Schema) openapi.Operation {
 	op := invitationContract("inviteProjectUser", "Invite a registered user", body, path, true)
-	op.Responses["201"] = response("Invitation and notification job commit together. Membership begins only after acceptance. Invitations remain pending until answered or withdrawn.", invitationSchema(), invitationExample)
+	op.Responses["201"] = response("Invitation and notification commit together. Membership begins only after acceptance. Invitations remain pending until answered or withdrawn.", invitationSchema(), invitationExample)
 	return op
 }
 func invitationsContract(query, path *jsonschema.Schema) openapi.Operation {
