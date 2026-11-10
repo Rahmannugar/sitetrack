@@ -1,0 +1,66 @@
+version: "3"
+
+tasks:
+  run-api:
+    desc: Run the API on the host using .env
+    cmds:
+      - go run ./cmd/api
+
+  migrate:
+    desc: Apply embedded Tern migrations using .env
+    cmds:
+      - go run ./cmd/migrate
+
+  db-up:
+    desc: Start PostgreSQL and wait for it to become healthy
+    cmds:
+      - docker compose up -d --wait postgres
+
+  up:
+    desc: Start PostgreSQL, apply migrations and start the API
+    cmds:
+      - docker compose up -d
+
+  up-build:
+    desc: Rebuild application images and start the stack
+    cmds:
+      - docker compose up -d --build
+
+  down:
+    desc: Stop the stack and retain database contents
+    cmds:
+      - docker compose down
+
+  logs:
+    desc: Follow stack logs
+    cmds:
+      - docker compose logs -f {{.CLI_ARGS}}
+
+  status:
+    desc: Show running and completed Compose services
+    cmds:
+      - docker compose ps -a
+
+  format:
+    desc: Format Go source
+    cmds:
+      - gofmt -w cmd internal
+
+  test:
+    desc: Run Go tests
+    cmds:
+      - go test ./...
+
+  build:
+    desc: Compile Go commands and packages
+    cmds:
+      - go build ./...
+
+  check:
+    desc: Check formatting, tests, vet, compilation and Compose configuration
+    cmds:
+      - test -z "$(gofmt -l cmd internal)"
+      - go test ./...
+      - go vet ./...
+      - go build ./...
+      - docker compose config --quiet
