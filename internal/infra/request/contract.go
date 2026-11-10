@@ -169,3 +169,14 @@ func (b *Contract[T]) DecodePath(c *gin.Context) (T, error) {
 	}
 	return value, nil
 }
+
+func (b *Contract[T]) DecodeHeader(c *gin.Context) (T, error) {
+	var value T
+	if err := c.ShouldBindHeader(&value); err != nil {
+		return value, ErrInvalid
+	}
+	if err := b.validator.Struct(value); err != nil {
+		return value, ErrInvalid
+	}
+	return value, nil
+}

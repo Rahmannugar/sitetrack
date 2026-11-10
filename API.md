@@ -49,6 +49,37 @@ Change a member's project admin status.
 Remove a project member.
 `DELETE /projects/:id/members/:user_id`
 
+## Invitations
+
+Invite a registered user to a project.
+`POST /projects/:id/invitations`
+
+List project invitations.
+`GET /projects/:id/invitations`
+
+Withdraw a pending invitation.
+`DELETE /projects/:id/invitations/:invitation_id`
+
+Accept or reject your invitation.
+`POST /invitations/:invitation_id/respond`
+
+## Notifications
+
+List your notifications.
+`GET /notifications`
+
+Count your unread notifications.
+`GET /notifications/unread-count`
+
+Mark a notification as read.
+`PATCH /notifications/:id/read`
+
+Mark all accessible notifications as read.
+`PATCH /notifications/read-all`
+
+Stream your notification updates.
+`GET /notifications/stream`
+
 ## Health
 
 Report whether the API process is serving requests.

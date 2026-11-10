@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
+	"sitetrack/internal/notifications"
 	projectdb "sitetrack/internal/projects/repositories/generated"
 )
 
@@ -75,6 +76,13 @@ func (s *Service) ChangeMember(ctx context.Context, actor uuid.UUID, id string, 
 		err = q.UpdateMember(ctx, projectdb.UpdateMemberParams{ProjectID: id, UserID: target, IsAdmin: *admin})
 	}
 	if err != nil {
+		return err
+	}
+	kind, title := "project.member_updated", "Project member updated"
+	if admin == nil {
+		kind, title = "project.member_removed", "Project member removed"
+	}
+	if err = notifications.Enqueue(ctx, tx, notifications.Event{ProjectID: id, ActorID: actor, Kind: kind, Title: title, Message: "Project membership changed for " + id + "."}, nil); err != nil {
 		return err
 	}
 	err = tx.Commit(ctx)

@@ -19,7 +19,7 @@ WHERE aggregate_id = $1 AND event_type = 'email.verification'
     AND status IN ('pending', 'processing')
 `
 
-func (q *Queries) CancelVerificationEmails(ctx context.Context, aggregateID uuid.UUID) error {
+func (q *Queries) CancelVerificationEmails(ctx context.Context, aggregateID string) error {
 	_, err := q.db.Exec(ctx, cancelVerificationEmails, aggregateID)
 	return err
 }
@@ -41,10 +41,10 @@ func (q *Queries) ClaimDailyCleanup(ctx context.Context, leaseToken uuid.UUID) (
 	return name, err
 }
 
-const claimEmails = `-- name: ClaimEmails :many
+const claimJobs = `-- name: ClaimJobs :many
 WITH candidate AS (
     SELECT id FROM sitetrack.outbox_events
-    WHERE event_type = 'email.verification' AND expires_at > now() AND attempts < 8
+    WHERE event_type=ANY($2::text[]) AND (expires_at IS NULL OR expires_at > now()) AND attempts < 8
         AND ((status = 'pending' AND available_at <= now())
             OR (status = 'processing' AND lease_until <= now()))
     ORDER BY created_at, id LIMIT 20 FOR UPDATE SKIP LOCKED
@@ -52,11 +52,17 @@ WITH candidate AS (
 UPDATE sitetrack.outbox_events AS e SET status = 'processing', attempts = attempts + 1,
     lease_token = $1, lease_until = now() + interval '30 seconds'
 FROM candidate WHERE e.id = candidate.id
-RETURNING e.id, e.payload, e.attempts, e.expires_at, e.lease_token, e.lease_until
+RETURNING e.id, e.event_type, e.payload, e.attempts, e.expires_at, e.lease_token, e.lease_until
 `
 
-type ClaimEmailsRow struct {
+type ClaimJobsParams struct {
+	LeaseToken uuid.NullUUID
+	EventTypes []string
+}
+
+type ClaimJobsRow struct {
 	ID         uuid.UUID
+	EventType  string
 	Payload    []byte
 	Attempts   int32
 	ExpiresAt  pgtype.Timestamptz
@@ -64,17 +70,18 @@ type ClaimEmailsRow struct {
 	LeaseUntil pgtype.Timestamptz
 }
 
-func (q *Queries) ClaimEmails(ctx context.Context, leaseToken uuid.NullUUID) ([]ClaimEmailsRow, error) {
-	rows, err := q.db.Query(ctx, claimEmails, leaseToken)
+func (q *Queries) ClaimJobs(ctx context.Context, arg ClaimJobsParams) ([]ClaimJobsRow, error) {
+	rows, err := q.db.Query(ctx, claimJobs, arg.LeaseToken, arg.EventTypes)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ClaimEmailsRow
+	var items []ClaimJobsRow
 	for rows.Next() {
-		var i ClaimEmailsRow
+		var i ClaimJobsRow
 		if err := rows.Scan(
 			&i.ID,
+			&i.EventType,
 			&i.Payload,
 			&i.Attempts,
 			&i.ExpiresAt,
@@ -112,7 +119,7 @@ VALUES ($1, $2, $3, $4, $5)
 
 type EnqueueParams struct {
 	ID          uuid.UUID
-	AggregateID uuid.UUID
+	AggregateID string
 	EventType   string
 	Payload     []byte
 	ExpiresAt   pgtype.Timestamptz
@@ -132,9 +139,8 @@ func (q *Queries) Enqueue(ctx context.Context, arg EnqueueParams) error {
 const expireJobs = `-- name: ExpireJobs :exec
 WITH expired AS (
     SELECT id FROM sitetrack.outbox_events
-    WHERE event_type = 'email.verification'
-        AND (status = 'pending' OR (status = 'processing' AND lease_until <= now()))
-        AND (expires_at <= now() OR attempts >= 8)
+    WHERE (status = 'pending' OR (status = 'processing' AND lease_until <= now()))
+        AND ((expires_at IS NOT NULL AND expires_at <= now()) OR attempts >= 8)
     ORDER BY created_at LIMIT 100 FOR UPDATE SKIP LOCKED
 )
 UPDATE sitetrack.outbox_events AS e SET status = 'failed', payload = NULL,
@@ -147,34 +153,34 @@ func (q *Queries) ExpireJobs(ctx context.Context) error {
 	return err
 }
 
-const publishEmail = `-- name: PublishEmail :execrows
+const publishJob = `-- name: PublishJob :execrows
 UPDATE sitetrack.outbox_events SET status = 'published', payload = NULL,
     published_at = now(), provider_message_id = $3, lease_token = NULL, lease_until = NULL
 WHERE id = $1 AND lease_token = $2 AND status = 'processing'
 `
 
-type PublishEmailParams struct {
+type PublishJobParams struct {
 	ID                uuid.UUID
 	LeaseToken        uuid.NullUUID
 	ProviderMessageID *string
 }
 
-func (q *Queries) PublishEmail(ctx context.Context, arg PublishEmailParams) (int64, error) {
-	result, err := q.db.Exec(ctx, publishEmail, arg.ID, arg.LeaseToken, arg.ProviderMessageID)
+func (q *Queries) PublishJob(ctx context.Context, arg PublishJobParams) (int64, error) {
+	result, err := q.db.Exec(ctx, publishJob, arg.ID, arg.LeaseToken, arg.ProviderMessageID)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
 }
 
-const retryEmail = `-- name: RetryEmail :execrows
+const retryJob = `-- name: RetryJob :execrows
 UPDATE sitetrack.outbox_events SET status = $3, available_at = $4,
     error_code = $5, lease_token = NULL, lease_until = NULL,
     payload = CASE WHEN $3 = 'failed' THEN NULL ELSE payload END
 WHERE id = $1 AND lease_token = $2 AND status = 'processing'
 `
 
-type RetryEmailParams struct {
+type RetryJobParams struct {
 	ID          uuid.UUID
 	LeaseToken  uuid.NullUUID
 	Status      string
@@ -182,8 +188,8 @@ type RetryEmailParams struct {
 	ErrorCode   *string
 }
 
-func (q *Queries) RetryEmail(ctx context.Context, arg RetryEmailParams) (int64, error) {
-	result, err := q.db.Exec(ctx, retryEmail,
+func (q *Queries) RetryJob(ctx context.Context, arg RetryJobParams) (int64, error) {
+	result, err := q.db.Exec(ctx, retryJob,
 		arg.ID,
 		arg.LeaseToken,
 		arg.Status,

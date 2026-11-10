@@ -34,6 +34,7 @@ func TestSeparatePoolLimitsAndEnvironmentOverride(t *testing.T) {
 func TestRejectInvalidSettingsWithoutLeakingValues(t *testing.T) {
 	for _, setting := range []string{
 		"SITETRACK_DATABASE_API_MAX_CONNECTIONS=0",
+		"SITETRACK_DATABASE_API_MAX_CONNECTIONS=1",
 		"SITETRACK_DATABASE_WORKER_MAX_CONNECTIONS=-1",
 		"SITETRACK_DATABASE_MIGRATION_MAX_CONNECTIONS=2147483648",
 		"SITETRACK_RATE_LIMIT_ENABLED=secret-invalid-boolean",

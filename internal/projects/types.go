@@ -26,11 +26,11 @@ type ListInput struct {
 	Search string `json:"search,omitempty" form:"search" binding:"max=150"`
 	Sort   string `json:"sort,omitempty" form:"sort,default=id" binding:"oneof=id name start_date"`
 	Cursor string `json:"cursor,omitempty" form:"cursor" binding:"max=4096"`
-	Limit  int    `json:"limit,omitempty" form:"limit,default=50" binding:"min=1,max=100"`
+	Limit  int    `json:"limit,omitempty" form:"limit,default=20" binding:"min=1,max=100"`
 }
 type MemberListInput struct {
 	Cursor string `json:"cursor,omitempty" form:"cursor" binding:"omitempty,uuid"`
-	Limit  int    `json:"limit,omitempty" form:"limit,default=50" binding:"min=1,max=100"`
+	Limit  int    `json:"limit,omitempty" form:"limit,default=20" binding:"min=1,max=100"`
 }
 type Project struct {
 	ID          string    `json:"id"`

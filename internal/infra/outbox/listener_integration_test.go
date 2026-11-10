@@ -40,7 +40,12 @@ func TestOutboxWakeupFollowsCommitAndRecovers(t *testing.T) {
 	listenContext, stop := context.WithCancel(ctx)
 	go func() {
 		defer close(done)
-		Listen(listenContext, pool, wake, slog.New(slog.NewTextHandler(io.Discard, nil)))
+		database.Listen(listenContext, pool, "sitetrack_outbox", func(string) {
+			select {
+			case wake <- struct{}{}:
+			default:
+			}
+		}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	}()
 	defer func() { stop(); <-done }()
 	receive := func() {
@@ -91,7 +96,7 @@ func TestOutboxWakeupFollowsCommitAndRecovers(t *testing.T) {
 	enqueue(true)
 	receive()
 	var terminated bool
-	if err = pool.QueryRow(ctx, "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name=$1 AND query='LISTEN sitetrack_outbox' AND pid<>pg_backend_pid()", application).Scan(&terminated); err != nil || !terminated {
+	if err = pool.QueryRow(ctx, "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name=$1 AND query='LISTEN \"sitetrack_outbox\"' AND pid<>pg_backend_pid()", application).Scan(&terminated); err != nil || !terminated {
 		t.Fatal("could not terminate listener connection", err)
 	}
 	receive()

@@ -42,14 +42,14 @@ func TestWorkerBatchesTwentyAndWaitsBeforeNextClaim(t *testing.T) {
 	}
 	for range 40 {
 		job := uuid.Must(uuid.NewV7())
-		if err = worker.queries.Enqueue(ctx, outboxdb.EnqueueParams{ID: job, AggregateID: id, EventType: "email.verification", Payload: s.cipher.Seal(payload, job[:]), ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(5 * time.Minute), Valid: true}}); err != nil {
+		if err = worker.queries.Enqueue(ctx, outboxdb.EnqueueParams{ID: job, AggregateID: id.String(), EventType: "email.verification", Payload: s.cipher.Seal(payload, job[:]), ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(5 * time.Minute), Valid: true}}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	started := make(chan struct{}, 41)
 	release := make(chan struct{}, 1)
 	var active, peak, calls atomic.Int32
-	worker.sender = emailSenderFunc(func(ctx context.Context, _ email.Message, _ string) (string, error) {
+	worker.verification.sender = emailSenderFunc(func(ctx context.Context, _ email.Message, _ string) (string, error) {
 		count := active.Add(1)
 		defer active.Add(-1)
 		for current := peak.Load(); count > current; current = peak.Load() {
@@ -120,7 +120,7 @@ func TestWorkerPollingFindsJobWhenItBecomesDueWithoutAnotherNotify(t *testing.T)
 	job, _ := queuedCode(t, s, id)
 	execAccountSQL(t, s.pool, "UPDATE sitetrack.outbox_events SET available_at=now()+interval '1 second' WHERE id=$1", job)
 	sent := make(chan struct{}, 1)
-	worker.sender = emailSenderFunc(func(context.Context, email.Message, string) (string, error) { sent <- struct{}{}; return "polled", nil })
+	worker.verification.sender = emailSenderFunc(func(context.Context, email.Message, string) (string, error) { sent <- struct{}{}; return "polled", nil })
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() { defer close(done); worker.Run(ctx) }()
@@ -134,24 +134,5 @@ func TestWorkerPollingFindsJobWhenItBecomesDueWithoutAnotherNotify(t *testing.T)
 	case <-sent:
 	case <-time.After(7 * time.Second):
 		t.Fatal("polling did not discover due work")
-	}
-}
-
-func TestRetryDelayHasExponentialJitterAndHonorsProviderWait(t *testing.T) {
-	for _, test := range []struct {
-		attempt                int32
-		provider, lower, upper time.Duration
-	}{
-		{1, 0, time.Second, 2 * time.Second},
-		{4, 0, 8 * time.Second, 16 * time.Second},
-		{4, 30 * time.Second, 30 * time.Second, 38 * time.Second},
-		{8, 0, 64 * time.Second, 128 * time.Second},
-	} {
-		for range 100 {
-			delay := retryDelay(test.attempt, test.provider)
-			if delay < test.lower || delay > test.upper {
-				t.Fatalf("retry delay outside bounds: %v", delay)
-			}
-		}
 	}
 }

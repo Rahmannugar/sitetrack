@@ -80,13 +80,13 @@ func pageSchema(item *jsonschema.Schema) *jsonschema.Schema {
 func listContract(query *jsonschema.Schema) openapi.Operation {
 	op := projectOperation("listProjects", "List accessible projects", nil, nil, false)
 	op.Parameters = openapi.Parameters(query, "query")
-	op.Responses["200"] = response("Ascending order by id (default), name or start_date, with id as tie-breaker. Search is a literal case-insensitive substring of name or id. Limit defaults to 50, maximum 100. Continue with next_cursor using the same search and sort. Empty cursor ends the list.", pageSchema(projectSchema()), json.RawMessage(`{"items":[`+string(projectExample)+`],"next_cursor":""}`))
+	op.Responses["200"] = response("Ascending order by id (default), name or start_date, with id as tie-breaker. Search is a literal case-insensitive substring of name or id. Limit defaults to 20, maximum 100. Continue with next_cursor using the same search and sort. Empty cursor ends the list.", pageSchema(projectSchema()), json.RawMessage(`{"items":[`+string(projectExample)+`],"next_cursor":""}`))
 	return op
 }
 func membersContract(query, path *jsonschema.Schema) openapi.Operation {
 	op := projectOperation("listProjectMembers", "List project members", nil, path, false)
 	op.Parameters = append(op.Parameters, openapi.Parameters(query, "query")...)
-	op.Responses["200"] = response("Members ordered by user id. Limit defaults to 50, maximum 100. Use next_cursor to continue; empty cursor ends the list.", pageSchema(memberSchema()), json.RawMessage(`{"items":[`+string(memberExample)+`],"next_cursor":""}`))
+	op.Responses["200"] = response("Members ordered by user id. Limit defaults to 20, maximum 100. Use next_cursor to continue; empty cursor ends the list.", pageSchema(memberSchema()), json.RawMessage(`{"items":[`+string(memberExample)+`],"next_cursor":""}`))
 	return op
 }
 func changeMemberContract(body, path *jsonschema.Schema) openapi.Operation {

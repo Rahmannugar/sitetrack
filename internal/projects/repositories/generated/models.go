@@ -5,6 +5,7 @@
 package projectsdb
 
 import (
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -15,4 +16,14 @@ type SitetrackProject struct {
 	EndDate   pgtype.Date
 	CreatedAt pgtype.Timestamptz
 	DeletedAt pgtype.Timestamptz
+}
+
+type SitetrackProjectInvitation struct {
+	ID          uuid.UUID
+	ProjectID   string
+	InviterID   uuid.UUID
+	InviteeID   uuid.UUID
+	Status      string
+	CreatedAt   pgtype.Timestamptz
+	CompletedAt pgtype.Timestamptz
 }

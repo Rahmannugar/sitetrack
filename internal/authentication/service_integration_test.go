@@ -17,6 +17,7 @@ import (
 	"sitetrack/internal/config"
 	"sitetrack/internal/infra/database"
 	"sitetrack/internal/infra/email"
+	"sitetrack/internal/infra/outbox"
 	outboxdb "sitetrack/internal/infra/outbox/repositories/generated"
 	"sitetrack/internal/infra/telemetry"
 )
@@ -34,7 +35,13 @@ func (s *captureEmail) Send(_ context.Context, _ email.Message, key string) (str
 	return "provider-message", s.err
 }
 
-func accountTest(t *testing.T) (*Service, *VerificationWorker, *captureEmail) {
+type verificationTestWorker struct {
+	*outbox.Worker
+	verification *VerificationWorker
+	queries      *outboxdb.Queries
+}
+
+func accountTest(t *testing.T) (*Service, *verificationTestWorker, *captureEmail) {
 	t.Helper()
 	url := os.Getenv("SITETRACK_TEST_DATABASE_URL")
 	if url == "" {
@@ -63,11 +70,12 @@ func accountTest(t *testing.T) (*Service, *VerificationWorker, *captureEmail) {
 		t.Fatal(err)
 	}
 	sender := &captureEmail{}
-	worker, err := NewVerificationWorker(pool, service.cipher, sender, monitoring)
+	verification := NewVerificationWorker(pool, service.cipher, sender, monitoring)
+	runner, err := outbox.NewWorker(pool, map[string]outbox.Handler{"email.verification": verification.Handle}, verification.CleanupOTPs, monitoring)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return service, worker, sender
+	return service, &verificationTestWorker{Worker: runner, verification: verification, queries: outboxdb.New(pool)}, sender
 }
 
 func newAccount(t *testing.T, service *Service) (SignupInput, uuid.UUID) {
@@ -212,7 +220,7 @@ func TestDailyCleanupRemovesExpiredAndUsedCodes(t *testing.T) {
 	}
 	execAccountSQL(t, s.pool, "UPDATE sitetrack.email_verifications SET created_at=now()-interval '11 minutes',expires_at=now()-interval '1 minute' WHERE user_id=$1", expired)
 	execAccountSQL(t, s.pool, "DELETE FROM sitetrack.worker_maintenance WHERE name='otp_cleanup'")
-	if err := worker.CleanupOTPs(context.Background()); err != nil {
+	if err := worker.verification.CleanupOTPs(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	var count int
@@ -223,7 +231,7 @@ func TestDailyCleanupRemovesExpiredAndUsedCodes(t *testing.T) {
 		t.Fatal("active code was deleted")
 	}
 	execAccountSQL(t, s.pool, "UPDATE sitetrack.email_verifications SET used_at=now() WHERE user_id=$1", active)
-	if err := worker.CleanupOTPs(context.Background()); err != nil {
+	if err := worker.verification.CleanupOTPs(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.pool.QueryRow(context.Background(), "SELECT count(*) FROM sitetrack.email_verifications WHERE user_id=$1", active).Scan(&count); err != nil || count != 1 {
@@ -273,21 +281,21 @@ func TestOutboxLeaseFencesStaleWorker(t *testing.T) {
 	queries := outboxdb.New(s.pool)
 	first := uuid.NullUUID{UUID: uuid.Must(uuid.NewV7()), Valid: true}
 	second := uuid.NullUUID{UUID: uuid.Must(uuid.NewV7()), Valid: true}
-	if jobs, err := queries.ClaimEmails(context.Background(), first); err != nil || len(jobs) != 1 {
+	if jobs, err := queries.ClaimJobs(context.Background(), outboxdb.ClaimJobsParams{LeaseToken: first, EventTypes: []string{"email.verification"}}); err != nil || len(jobs) != 1 {
 		t.Fatal(err)
 	}
-	if jobs, err := queries.ClaimEmails(context.Background(), second); err != nil || len(jobs) != 0 {
+	if jobs, err := queries.ClaimJobs(context.Background(), outboxdb.ClaimJobsParams{LeaseToken: second, EventTypes: []string{"email.verification"}}); err != nil || len(jobs) != 0 {
 		t.Fatal("active job was claimed by another worker")
 	}
 	execAccountSQL(t, s.pool, "UPDATE sitetrack.outbox_events SET lease_until=now()-interval '1 second' WHERE id=$1", job)
-	if jobs, err := queries.ClaimEmails(context.Background(), second); err != nil || len(jobs) != 1 {
+	if jobs, err := queries.ClaimJobs(context.Background(), outboxdb.ClaimJobsParams{LeaseToken: second, EventTypes: []string{"email.verification"}}); err != nil || len(jobs) != 1 {
 		t.Fatal(err)
 	}
 	providerID := "provider-id"
-	if count, err := queries.PublishEmail(context.Background(), outboxdb.PublishEmailParams{ID: job, LeaseToken: first, ProviderMessageID: &providerID}); err != nil || count != 0 {
+	if count, err := queries.PublishJob(context.Background(), outboxdb.PublishJobParams{ID: job, LeaseToken: first, ProviderMessageID: &providerID}); err != nil || count != 0 {
 		t.Fatal("stale worker changed the recovered job")
 	}
-	if count, err := queries.PublishEmail(context.Background(), outboxdb.PublishEmailParams{ID: job, LeaseToken: second, ProviderMessageID: &providerID}); err != nil || count != 1 {
+	if count, err := queries.PublishJob(context.Background(), outboxdb.PublishJobParams{ID: job, LeaseToken: second, ProviderMessageID: &providerID}); err != nil || count != 1 {
 		t.Fatal("current worker could not finish the job")
 	}
 }
@@ -304,7 +312,7 @@ func TestWorkerShutdownDrainsActiveDelivery(t *testing.T) {
 	job, _ := queuedCode(t, s, id)
 	started := make(chan context.Context, 1)
 	release := make(chan struct{})
-	worker.sender = emailSenderFunc(func(ctx context.Context, _ email.Message, _ string) (string, error) {
+	worker.verification.sender = emailSenderFunc(func(ctx context.Context, _ email.Message, _ string) (string, error) {
 		started <- ctx
 		select {
 		case <-release:

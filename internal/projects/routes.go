@@ -190,13 +190,17 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 			return err
 		}
 	}
-	return nil
+	return registerInvitations(router, service, accounts, contracts, enabled, logger)
 }
 func projectError(c *gin.Context, logger *slog.Logger, err error) {
 	code, message := http.StatusInternalServerError, "internal server error"
 	switch {
 	case errors.Is(err, ErrInvalid), errors.Is(err, request.ErrInvalid):
 		code, message = http.StatusBadRequest, ErrInvalid.Error()
+	case errors.Is(err, ErrInvitationNotFound):
+		code, message = http.StatusNotFound, ErrInvitationNotFound.Error()
+	case errors.Is(err, ErrInvitationConflict):
+		code, message = http.StatusConflict, ErrInvitationConflict.Error()
 	case errors.Is(err, ErrNotFound):
 		code, message = http.StatusNotFound, ErrNotFound.Error()
 	case errors.Is(err, ErrForbidden):

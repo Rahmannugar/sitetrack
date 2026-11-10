@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"sitetrack/internal/notifications"
 	projectdb "sitetrack/internal/projects/repositories/generated"
 )
 
@@ -140,6 +141,9 @@ func (s *Service) Update(ctx context.Context, actor uuid.UUID, id string, input 
 	if err != nil {
 		return Project{}, err
 	}
+	if err = notifications.Enqueue(ctx, tx, notifications.Event{ProjectID: id, ActorID: actor, Kind: "project.updated", Title: "Project updated", Message: "Project details were updated for " + id + "."}, nil); err != nil {
+		return Project{}, err
+	}
 	if err = tx.Commit(ctx); err != nil {
 		return Project{}, err
 	}
@@ -153,6 +157,9 @@ func (s *Service) Remove(ctx context.Context, actor uuid.UUID, id string) error 
 		return err
 	}
 	defer rollback(tx)
+	if err = q.CancelProjectInvitations(ctx, id); err != nil {
+		return err
+	}
 	if err = q.RemoveProject(ctx, id); err != nil {
 		return err
 	}

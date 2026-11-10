@@ -73,6 +73,9 @@ func load(path string) (Config, error) {
 			*pool.limit = int32(count)
 		}
 	}
+	if cfg.DatabasePools.API < 2 {
+		return Config{}, errors.New("SITETRACK_DATABASE_API_MAX_CONNECTIONS must be at least 2 for listening and requests")
+	}
 	databaseURL, err := url.Parse(cfg.DatabaseURL)
 	if err != nil || databaseURL == nil || (databaseURL.Scheme != "postgres" && databaseURL.Scheme != "postgresql") || databaseURL.Hostname() == "" || strings.Trim(databaseURL.Path, "/") == "" {
 		return Config{}, errors.New("SITETRACK_DATABASE_URL must be a PostgreSQL URL with a host and database name")

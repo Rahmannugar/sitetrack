@@ -11,29 +11,28 @@ WHERE aggregate_id = $1 AND event_type = 'email.verification'
 -- name: ExpireJobs :exec
 WITH expired AS (
     SELECT id FROM sitetrack.outbox_events
-    WHERE event_type = 'email.verification'
-        AND (status = 'pending' OR (status = 'processing' AND lease_until <= now()))
-        AND (expires_at <= now() OR attempts >= 8)
+    WHERE (status = 'pending' OR (status = 'processing' AND lease_until <= now()))
+        AND ((expires_at IS NOT NULL AND expires_at <= now()) OR attempts >= 8)
     ORDER BY created_at LIMIT 100 FOR UPDATE SKIP LOCKED
 )
 UPDATE sitetrack.outbox_events AS e SET status = 'failed', payload = NULL,
     error_code = 'expired_or_exhausted', lease_token = NULL, lease_until = NULL
 FROM expired WHERE e.id = expired.id;
 
--- name: ClaimEmails :many
+-- name: ClaimJobs :many
 WITH candidate AS (
     SELECT id FROM sitetrack.outbox_events
-    WHERE event_type = 'email.verification' AND expires_at > now() AND attempts < 8
+    WHERE event_type=ANY(sqlc.arg(event_types)::text[]) AND (expires_at IS NULL OR expires_at > now()) AND attempts < 8
         AND ((status = 'pending' AND available_at <= now())
             OR (status = 'processing' AND lease_until <= now()))
     ORDER BY created_at, id LIMIT 20 FOR UPDATE SKIP LOCKED
 )
 UPDATE sitetrack.outbox_events AS e SET status = 'processing', attempts = attempts + 1,
-    lease_token = $1, lease_until = now() + interval '30 seconds'
+    lease_token = sqlc.arg(lease_token), lease_until = now() + interval '30 seconds'
 FROM candidate WHERE e.id = candidate.id
-RETURNING e.id, e.payload, e.attempts, e.expires_at, e.lease_token, e.lease_until;
+RETURNING e.id, e.event_type, e.payload, e.attempts, e.expires_at, e.lease_token, e.lease_until;
 
--- name: PublishEmail :execrows
+-- name: PublishJob :execrows
 UPDATE sitetrack.outbox_events SET status = 'published', payload = NULL,
     published_at = now(), provider_message_id = $3, lease_token = NULL, lease_until = NULL
 WHERE id = $1 AND lease_token = $2 AND status = 'processing';
@@ -52,7 +51,7 @@ UPDATE sitetrack.worker_maintenance
 SET completed_on = (now() AT TIME ZONE 'UTC')::date, lease_until = now()
 WHERE name = 'otp_cleanup' AND lease_token = $1;
 
--- name: RetryEmail :execrows
+-- name: RetryJob :execrows
 UPDATE sitetrack.outbox_events SET status = $3, available_at = $4,
     error_code = $5, lease_token = NULL, lease_until = NULL,
     payload = CASE WHEN $3 = 'failed' THEN NULL ELSE payload END

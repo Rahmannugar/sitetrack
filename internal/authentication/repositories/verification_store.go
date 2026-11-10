@@ -79,7 +79,7 @@ func (s *VerificationStore) Issue(ctx context.Context, record emailverification.
 	}); err != nil {
 		return err
 	}
-	return s.events.CancelVerificationEmails(ctx, id)
+	return s.events.CancelVerificationEmails(ctx, id.String())
 }
 
 func (s *VerificationStore) Verify(ctx context.Context, hash emailverification.TokenHash, at time.Time) (emailverification.User, error) {
@@ -95,7 +95,7 @@ func (s *VerificationStore) Verify(ctx context.Context, hash emailverification.T
 	if err := s.queries.MarkVerificationUsed(ctx, user.ID); err != nil {
 		return emailverification.User{}, err
 	}
-	if err := s.events.CancelVerificationEmails(ctx, user.ID); err != nil {
+	if err := s.events.CancelVerificationEmails(ctx, user.ID.String()); err != nil {
 		return emailverification.User{}, err
 	}
 	return emailverification.User{ID: user.ID.String(), Email: user.Email, Verified: true}, nil

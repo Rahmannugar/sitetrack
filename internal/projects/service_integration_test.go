@@ -47,6 +47,7 @@ func projectTest(t *testing.T) *fixture {
 	if err = database.Migrate(ctx, pool); err != nil {
 		t.Fatal(err)
 	}
+	cancel()
 	accounts, err := authentication.NewService(pool, config.Authentication{OTPSecret: []byte("12345678901234567890123456789012"), OutboxKey: []byte("abcdefghijklmnopqrstuvxyz1234567"), JWTSeed: []byte("12345678901234567890123456789012")})
 	if err != nil {
 		t.Fatal(err)
@@ -56,10 +57,12 @@ func projectTest(t *testing.T) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
+	seedContext, seedCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer seedCancel()
 	for _, role := range []string{"user", "user", "superadmin", "company_store_manager"} {
 		id := uuid.Must(uuid.NewV7())
 		email := id.String() + "@example.test"
-		if _, err = pool.Exec(ctx, "INSERT INTO sitetrack.users(id,name,email,password_hash,role,email_verified) VALUES($1,'Site Engineer',$2,$3,$4,true)", id, email, hash, role); err != nil {
+		if _, err = pool.Exec(seedContext, "INSERT INTO sitetrack.users(id,name,email,password_hash,role,email_verified) VALUES($1,'Site Engineer',$2,$3,$4,true)", id, email, hash, role); err != nil {
 			t.Fatal(err)
 		}
 		f.users = append(f.users, id)
@@ -96,6 +99,9 @@ func projectTest(t *testing.T) *fixture {
 		}
 		for _, statement := range []string{
 			"UPDATE sitetrack.projects SET deleted_at=now() WHERE id=ANY($1)",
+			"DELETE FROM sitetrack.notifications WHERE project_id=ANY($1)",
+			"DELETE FROM sitetrack.outbox_events WHERE aggregate_id=ANY($1) AND event_type='notification.project'",
+			"DELETE FROM sitetrack.project_invitations WHERE project_id=ANY($1)",
 			"DELETE FROM sitetrack.project_stores WHERE project_id=ANY($1)",
 			"DELETE FROM sitetrack.project_memberships WHERE project_id=ANY($1)",
 			"DELETE FROM sitetrack.projects WHERE id=ANY($1)",

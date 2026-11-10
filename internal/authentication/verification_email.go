@@ -55,7 +55,7 @@ func (s *verificationSender) SendVerification(ctx context.Context, message email
 		return err
 	}
 	return s.events.Enqueue(ctx, outboxdb.EnqueueParams{
-		ID: id, AggregateID: userID, EventType: "email.verification",
+		ID: id, AggregateID: userID.String(), EventType: "email.verification",
 		Payload: s.cipher.Seal(payload, id[:]), ExpiresAt: pgtype.Timestamptz{Time: message.ExpiresAt, Valid: true},
 	})
 }
