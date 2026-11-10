@@ -15,9 +15,17 @@ import (
 )
 
 type Config struct {
-	HTTPPort               int
-	DatabaseURL            string
-	DatabaseMaxConnections int32
+	HTTPPort      int
+	DatabaseURL   string
+	DatabasePools DatabasePools
+	RateLimit     RateLimit
+	Telemetry     Telemetry
+}
+
+type DatabasePools struct {
+	API       int32
+	Worker    int32
+	Migration int32
 }
 
 func Load() (Config, error) {
@@ -27,8 +35,6 @@ func Load() (Config, error) {
 func load(path string) (Config, error) {
 	k := koanf.New(".")
 	const prefix = "SITETRACK_"
-	// Koanf requires an interface value at its provider boundary; configuration
-	// is parsed into concrete types and validated before it reaches the runtime.
 	transform := func(key, value string) (string, any) {
 		return strings.ToLower(strings.TrimPrefix(key, prefix)), value
 	}
@@ -39,7 +45,10 @@ func load(path string) (Config, error) {
 		return Config{}, errors.New("could not load environment configuration")
 	}
 
-	cfg := Config{HTTPPort: 8080, DatabaseMaxConnections: 10, DatabaseURL: k.String("database_url")}
+	cfg := Config{
+		HTTPPort: 8080, DatabaseURL: k.String("database_url"),
+		DatabasePools: DatabasePools{API: 15, Worker: 10, Migration: 1},
+	}
 	if k.Exists("http_port") {
 		port, err := strconv.Atoi(k.String("http_port"))
 		if err != nil || port < 1 || port > 65535 {
@@ -47,16 +56,33 @@ func load(path string) (Config, error) {
 		}
 		cfg.HTTPPort = port
 	}
-	if k.Exists("database_max_connections") {
-		count, err := strconv.ParseInt(k.String("database_max_connections"), 10, 32)
-		if err != nil || count < 1 || count > 100 {
-			return Config{}, errors.New("SITETRACK_DATABASE_MAX_CONNECTIONS must be between 1 and 100")
+	for _, pool := range []struct {
+		key   string
+		limit *int32
+	}{
+		{"database_api_max_connections", &cfg.DatabasePools.API},
+		{"database_worker_max_connections", &cfg.DatabasePools.Worker},
+		{"database_migration_max_connections", &cfg.DatabasePools.Migration},
+	} {
+		if k.Exists(pool.key) {
+			count, err := strconv.ParseInt(k.String(pool.key), 10, 32)
+			if err != nil || count < 1 {
+				return Config{}, fmt.Errorf("SITETRACK_%s must be a positive 32-bit integer", strings.ToUpper(pool.key))
+			}
+			*pool.limit = int32(count)
 		}
-		cfg.DatabaseMaxConnections = int32(count)
 	}
 	databaseURL, err := url.Parse(cfg.DatabaseURL)
 	if err != nil || databaseURL == nil || (databaseURL.Scheme != "postgres" && databaseURL.Scheme != "postgresql") || databaseURL.Hostname() == "" || strings.Trim(databaseURL.Path, "/") == "" {
 		return Config{}, errors.New("SITETRACK_DATABASE_URL must be a PostgreSQL URL with a host and database name")
+	}
+	cfg.Telemetry, err = loadTelemetry(k)
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.RateLimit, err = loadRateLimit(k)
+	if err != nil {
+		return Config{}, err
 	}
 	return cfg, nil
 }

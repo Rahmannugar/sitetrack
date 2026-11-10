@@ -30,7 +30,7 @@ func run(ctx context.Context) error {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	pool, err := database.Open(ctx, cfg.DatabaseURL, 1)
+	pool, err := database.Open(ctx, cfg.DatabaseURL, cfg.DatabasePools.Migration)
 	if err != nil {
 		return err
 	}

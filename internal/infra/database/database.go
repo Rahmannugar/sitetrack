@@ -11,7 +11,7 @@ import (
 func Open(ctx context.Context, databaseURL string, maxConnections int32) (*pgxpool.Pool, error) {
 	cfg, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
-		// Parsing errors may embed credentials from the connection string.
+		// We omit parser errors because they can include database credentials.
 		return nil, errors.New("invalid PostgreSQL connection configuration")
 	}
 	cfg.MaxConns = maxConnections

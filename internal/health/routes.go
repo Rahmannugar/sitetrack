@@ -16,7 +16,7 @@ type response struct {
 	Status string `json:"status"`
 }
 
-func Register(router *gin.Engine, database Database) {
+func Register(router gin.IRoutes, database Database) {
 	router.GET("/health/live", func(c *gin.Context) {
 		c.JSON(http.StatusOK, response{Status: "ok"})
 	})
