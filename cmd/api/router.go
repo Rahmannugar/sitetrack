@@ -1,0 +1,35 @@
+package main
+
+import (
+	"fmt"
+	"time"
+
+	"github.com/gin-gonic/gin"
+
+	"sitetrack/internal/health"
+	"sitetrack/internal/infra/httpserver"
+	"sitetrack/internal/infra/openapi"
+	"sitetrack/internal/infra/telemetry"
+)
+
+func newRouter(database health.Database, monitoring *telemetry.Runtime) (*gin.Engine, error) {
+	gin.SetMode(gin.ReleaseMode)
+	router := gin.New()
+	if err := router.SetTrustedProxies(nil); err != nil {
+		return nil, fmt.Errorf("configure trusted proxies: %w", err)
+	}
+	observeHTTP, err := monitoring.HTTP()
+	if err != nil {
+		return nil, err
+	}
+	router.Use(observeHTTP)
+	requests := router.Group("", httpserver.Timeout(15*time.Second))
+	contracts := openapi.New()
+	if err := health.Register(requests, database, contracts); err != nil {
+		return nil, err
+	}
+	if err := contracts.RegisterDocs(requests); err != nil {
+		return nil, err
+	}
+	return router, nil
+}

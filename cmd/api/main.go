@@ -11,12 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gin-gonic/gin"
-
 	"sitetrack/internal/config"
-	"sitetrack/internal/health"
 	"sitetrack/internal/infra/database"
-	"sitetrack/internal/infra/httpserver"
 	"sitetrack/internal/infra/telemetry"
 )
 
@@ -59,18 +55,10 @@ func run(ctx context.Context, logger *slog.Logger) (resultErr error) {
 	}
 	defer pool.Close()
 
-	gin.SetMode(gin.ReleaseMode)
-	router := gin.New()
-	if err := router.SetTrustedProxies(nil); err != nil {
-		return fmt.Errorf("configure trusted proxies: %w", err)
-	}
-	observeHTTP, err := monitoring.HTTP()
+	router, err := newRouter(pool, monitoring)
 	if err != nil {
 		return err
 	}
-	router.Use(observeHTTP)
-	requests := router.Group("", httpserver.Timeout(15*time.Second))
-	health.Register(requests, pool)
 	server := &http.Server{
 		Addr:              cfg.HTTPAddress(),
 		Handler:           router,

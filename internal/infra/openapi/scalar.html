@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SiteTrack API</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.76.4/dist/browser/standalone.js"></script>
+    <script>
+      Scalar.createApiReference('#app', {
+        url: '/api/openapi.json',
+        persistAuth: false,
+        telemetry: false,
+      })
+    </script>
+  </body>
+</html>
