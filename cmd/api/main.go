@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"sitetrack/internal/authentication"
 	"sitetrack/internal/config"
 	"sitetrack/internal/infra/database"
 	"sitetrack/internal/infra/telemetry"
@@ -55,7 +56,11 @@ func run(ctx context.Context, logger *slog.Logger) (resultErr error) {
 	}
 	defer pool.Close()
 
-	router, err := newRouter(pool, monitoring)
+	accounts, err := authentication.NewService(pool, cfg.Authentication)
+	if err != nil {
+		return err
+	}
+	router, err := newRouter(pool, monitoring, accounts, cfg.RateLimit.Enabled)
 	if err != nil {
 		return err
 	}

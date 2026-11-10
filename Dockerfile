@@ -9,7 +9,8 @@ COPY cmd ./cmd
 COPY internal ./internal
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api && \
-    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/migrate ./cmd/migrate
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/migrate ./cmd/migrate && \
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/worker ./cmd/worker
 
 FROM alpine:3.23
 RUN apk add --no-cache ca-certificates && \
@@ -17,7 +18,7 @@ RUN apk add --no-cache ca-certificates && \
     adduser -S -D -H -u 10001 -G sitetrack sitetrack
 
 WORKDIR /app
-COPY --from=build /out/api /out/migrate /app/
+COPY --from=build /out/api /out/migrate /out/worker /app/
 USER sitetrack
 EXPOSE 8080
 CMD ["/app/api"]

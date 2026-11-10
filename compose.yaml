@@ -7,6 +7,13 @@ x-application: &application
   environment: &application-environment
     SITETRACK_DATABASE_URL: postgres://sitetrack:sitetrack@postgres:5432/sitetrack?sslmode=disable
 
+x-telemetry-environment: &telemetry-environment
+  SITETRACK_TELEMETRY_ENABLED: ${SITETRACK_TELEMETRY_ENABLED:-false}
+  SITETRACK_ENVIRONMENT: ${SITETRACK_ENVIRONMENT:-development}
+  SITETRACK_OTLP_ENDPOINT: ${SITETRACK_OTLP_ENDPOINT:-https://otlp.nr-data.net}
+  SITETRACK_OTLP_API_KEY: ${SITETRACK_OTLP_API_KEY:-}
+  SITETRACK_TRACE_SAMPLE_RATIO: ${SITETRACK_TRACE_SAMPLE_RATIO:-0.1}
+
 services:
   postgres:
     image: postgres:18-alpine
@@ -40,15 +47,13 @@ services:
   api:
     <<: *application
     environment:
-      <<: *application-environment
+      <<: [*application-environment, *telemetry-environment]
       SITETRACK_HTTP_PORT: "8080"
       SITETRACK_DATABASE_API_MAX_CONNECTIONS: ${SITETRACK_DATABASE_API_MAX_CONNECTIONS:-15}
       SITETRACK_RATE_LIMIT_ENABLED: ${SITETRACK_RATE_LIMIT_ENABLED:-true}
-      SITETRACK_TELEMETRY_ENABLED: ${SITETRACK_TELEMETRY_ENABLED:-false}
-      SITETRACK_ENVIRONMENT: ${SITETRACK_ENVIRONMENT:-development}
-      SITETRACK_OTLP_ENDPOINT: ${SITETRACK_OTLP_ENDPOINT:-https://otlp.nr-data.net}
-      SITETRACK_OTLP_API_KEY: ${SITETRACK_OTLP_API_KEY:-}
-      SITETRACK_TRACE_SAMPLE_RATIO: ${SITETRACK_TRACE_SAMPLE_RATIO:-0.1}
+      SITETRACK_OTP_SECRET: ${SITETRACK_OTP_SECRET:-}
+      SITETRACK_OUTBOX_ENCRYPTION_KEY: ${SITETRACK_OUTBOX_ENCRYPTION_KEY:-}
+      SITETRACK_EMAIL_FROM: ${SITETRACK_EMAIL_FROM:-SiteTrack <onboarding@resend.dev>}
     ports:
       - "127.0.0.1:${SITETRACK_HTTP_PORT:-8080}:8080"
     depends_on:
@@ -63,6 +68,22 @@ services:
       retries: 3
       start_period: 5s
     stop_grace_period: 20s
+    restart: unless-stopped
+
+  worker:
+    <<: *application
+    command: ["/app/worker"]
+    environment:
+      <<: [*application-environment, *telemetry-environment]
+      SITETRACK_DATABASE_WORKER_MAX_CONNECTIONS: ${SITETRACK_DATABASE_WORKER_MAX_CONNECTIONS:-10}
+      SITETRACK_OUTBOX_ENCRYPTION_KEY: ${SITETRACK_OUTBOX_ENCRYPTION_KEY:-}
+      SITETRACK_RESEND_API_KEY: ${SITETRACK_RESEND_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    stop_grace_period: 25s
     restart: unless-stopped
 
 volumes:

@@ -31,6 +31,12 @@ type Operation struct {
 	Summary     string              `json:"summary"`
 	Tags        []string            `json:"tags"`
 	Responses   map[string]Response `json:"responses"`
+	RequestBody *RequestBody        `json:"requestBody,omitempty"`
+}
+
+type RequestBody struct {
+	Required bool                 `json:"required"`
+	Content  map[string]MediaType `json:"content"`
 }
 
 type Response struct {
@@ -40,7 +46,7 @@ type Response struct {
 
 type MediaType struct {
 	Schema   *jsonschema.Schema `json:"schema"`
-	Examples map[string]Example `json:"examples"`
+	Examples map[string]Example `json:"examples,omitempty"`
 }
 
 type Example struct {
@@ -65,7 +71,7 @@ func New() *Registry {
 	}
 }
 
-func (r *Registry) Register(router *gin.RouterGroup, method, route string, operation Operation, handler gin.HandlerFunc) error {
+func (r *Registry) Register(router *gin.RouterGroup, method, route string, operation Operation, handlers ...gin.HandlerFunc) error {
 	mounted := path.Join(router.BasePath(), route)
 	methodKey := strings.ToLower(method)
 	if operation.OperationID == "" || operation.Summary == "" || len(operation.Responses) == 0 {
@@ -82,7 +88,7 @@ func (r *Registry) Register(router *gin.RouterGroup, method, route string, opera
 	}
 	r.document.Paths[mounted][methodKey] = operation
 	r.ids[operation.OperationID] = true
-	router.Handle(method, route, handler)
+	router.Handle(method, route, handlers...)
 	return nil
 }
 

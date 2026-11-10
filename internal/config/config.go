@@ -15,11 +15,12 @@ import (
 )
 
 type Config struct {
-	HTTPPort      int
-	DatabaseURL   string
-	DatabasePools DatabasePools
-	RateLimit     RateLimit
-	Telemetry     Telemetry
+	HTTPPort       int
+	DatabaseURL    string
+	DatabasePools  DatabasePools
+	RateLimit      RateLimit
+	Telemetry      Telemetry
+	Authentication Authentication
 }
 
 type DatabasePools struct {
@@ -81,6 +82,10 @@ func load(path string) (Config, error) {
 		return Config{}, err
 	}
 	cfg.RateLimit, err = loadRateLimit(k)
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.Authentication, err = loadAuthentication(k)
 	if err != nil {
 		return Config{}, err
 	}

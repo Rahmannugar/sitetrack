@@ -1,5 +1,16 @@
 # SiteTrack API
 
+## Authentication
+
+Register an account and queue its verification email.
+`POST /auth/signup`
+
+Verify an email address using its OTP.
+`POST /auth/verify-email`
+
+Request another verification code.
+`POST /auth/resend-verification`
+
 ## Health
 
 Report whether the API process is serving requests.

@@ -1,0 +1,44 @@
+version: "2"
+sql:
+  - name: authentication
+    engine: postgresql
+    schema: internal/infra/database/migrations
+    queries: internal/authentication/queries
+    gen:
+      go:
+        package: authenticationdb
+        out: internal/authentication/repositories/generated
+        sql_package: pgx/v5
+        emit_pointers_for_null_types: true
+        omit_unused_structs: true
+        overrides:
+          - db_type: uuid
+            go_type:
+              import: github.com/google/uuid
+              type: UUID
+          - db_type: uuid
+            nullable: true
+            go_type:
+              import: github.com/google/uuid
+              type: NullUUID
+  - name: outbox
+    engine: postgresql
+    schema: internal/infra/database/migrations
+    queries: internal/infra/outbox/queries
+    gen:
+      go:
+        package: outboxdb
+        out: internal/infra/outbox/repositories/generated
+        sql_package: pgx/v5
+        emit_pointers_for_null_types: true
+        omit_unused_structs: true
+        overrides:
+          - db_type: uuid
+            go_type:
+              import: github.com/google/uuid
+              type: UUID
+          - db_type: uuid
+            nullable: true
+            go_type:
+              import: github.com/google/uuid
+              type: NullUUID

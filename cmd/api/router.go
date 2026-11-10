@@ -6,13 +6,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"sitetrack/internal/authentication"
 	"sitetrack/internal/health"
 	"sitetrack/internal/infra/httpserver"
 	"sitetrack/internal/infra/openapi"
 	"sitetrack/internal/infra/telemetry"
 )
 
-func newRouter(database health.Database, monitoring *telemetry.Runtime) (*gin.Engine, error) {
+func newRouter(database health.Database, monitoring *telemetry.Runtime, accounts authentication.Accounts, rateLimitEnabled bool) (*gin.Engine, error) {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 	if err := router.SetTrustedProxies(nil); err != nil {
@@ -26,6 +27,9 @@ func newRouter(database health.Database, monitoring *telemetry.Runtime) (*gin.En
 	requests := router.Group("", httpserver.Timeout(15*time.Second))
 	contracts := openapi.New()
 	if err := health.Register(requests, database, contracts); err != nil {
+		return nil, err
+	}
+	if err := authentication.Register(requests, accounts, contracts, rateLimitEnabled, monitoring.Logger); err != nil {
 		return nil, err
 	}
 	if err := contracts.RegisterDocs(requests); err != nil {
