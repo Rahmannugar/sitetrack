@@ -34,10 +34,11 @@ func resendContract(schema *jsonschema.Schema) openapi.Operation {
 }
 
 func accountContract(id, summary string, schema *jsonschema.Schema, responses map[string]openapi.Response) openapi.Operation {
-	return openapi.Operation{OperationID: id, Summary: summary, Tags: []string{"Authentication"},
-		RequestBody: &openapi.RequestBody{Required: true, Content: map[string]openapi.MediaType{"application/json": {Schema: schema}}},
-		Responses:   responses,
+	operation := openapi.Operation{OperationID: id, Summary: summary, Tags: []string{"Authentication"}, Responses: responses}
+	if schema != nil {
+		operation.RequestBody = &openapi.RequestBody{Required: true, Content: map[string]openapi.MediaType{"application/json": {Schema: schema}}}
 	}
+	return operation
 }
 
 func messageContract(description, example string) openapi.Response {

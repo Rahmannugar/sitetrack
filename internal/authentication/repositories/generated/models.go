@@ -3,3 +3,23 @@
 //   sqlc v1.31.1
 
 package authenticationdb
+
+import (
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
+)
+
+type SitetrackAuthSession struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	CreatedAt pgtype.Timestamptz
+	ExpiresAt pgtype.Timestamptz
+}
+
+type SitetrackRefreshToken struct {
+	TokenHash []byte
+	SessionID uuid.UUID
+	CreatedAt pgtype.Timestamptz
+	ExpiresAt pgtype.Timestamptz
+	RotatedAt pgtype.Timestamptz
+}

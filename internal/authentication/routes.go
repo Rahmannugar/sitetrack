@@ -89,10 +89,19 @@ func Register(router *gin.RouterGroup, accounts Accounts, contracts *openapi.Reg
 			return err
 		}
 	}
-	return nil
+	return registerSessions(group, accounts, contracts, enabled, logger)
 }
 
 func accountError(c *gin.Context, logger *slog.Logger, err error) {
+	if errors.Is(err, ErrUnauthenticated) || errors.Is(err, ErrInvalidCredentials) {
+		c.Header("WWW-Authenticate", "Bearer")
+		c.JSON(http.StatusUnauthorized, errorResponse{Error: err.Error()})
+		return
+	}
+	if errors.Is(err, request.ErrInvalid) {
+		c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request body"})
+		return
+	}
 	if errors.Is(err, ErrInvalidInput) || errors.Is(err, ErrInvalidVerification) {
 		c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
 		return

@@ -11,6 +11,18 @@ Verify an email address using its OTP.
 Request another verification code.
 `POST /auth/resend-verification`
 
+Log in and replace the previous session.
+`POST /auth/login`
+
+Renew JWT access and rotate the refresh token.
+`POST /auth/refresh`
+
+Read your profile.
+`GET /auth/me`
+
+Revoke your current session.
+`POST /auth/logout`
+
 ## Health
 
 Report whether the API process is serving requests.

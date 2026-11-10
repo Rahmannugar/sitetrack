@@ -11,10 +11,20 @@ import (
 )
 
 type Document struct {
-	OpenAPI string                          `json:"openapi"`
-	Info    Info                            `json:"info"`
-	Servers []Server                        `json:"servers"`
-	Paths   map[string]map[string]Operation `json:"paths"`
+	OpenAPI    string                          `json:"openapi"`
+	Info       Info                            `json:"info"`
+	Servers    []Server                        `json:"servers"`
+	Paths      map[string]map[string]Operation `json:"paths"`
+	Components Components                      `json:"components"`
+}
+
+type Components struct {
+	SecuritySchemes map[string]SecurityScheme `json:"securitySchemes"`
+}
+type SecurityScheme struct {
+	Type         string `json:"type"`
+	Scheme       string `json:"scheme"`
+	BearerFormat string `json:"bearerFormat"`
 }
 
 type Info struct {
@@ -27,11 +37,12 @@ type Server struct {
 }
 
 type Operation struct {
-	OperationID string              `json:"operationId"`
-	Summary     string              `json:"summary"`
-	Tags        []string            `json:"tags"`
-	Responses   map[string]Response `json:"responses"`
-	RequestBody *RequestBody        `json:"requestBody,omitempty"`
+	OperationID string                `json:"operationId"`
+	Summary     string                `json:"summary"`
+	Tags        []string              `json:"tags"`
+	Responses   map[string]Response   `json:"responses"`
+	RequestBody *RequestBody          `json:"requestBody,omitempty"`
+	Security    []map[string][]string `json:"security,omitempty"`
 }
 
 type RequestBody struct {
@@ -62,10 +73,11 @@ type Registry struct {
 func New() *Registry {
 	return &Registry{
 		document: Document{
-			OpenAPI: "3.1.1",
-			Info:    Info{Title: "SiteTrack API", Version: "0.1.0"},
-			Servers: []Server{{URL: "/"}},
-			Paths:   make(map[string]map[string]Operation),
+			OpenAPI:    "3.1.1",
+			Info:       Info{Title: "SiteTrack API", Version: "0.1.0"},
+			Servers:    []Server{{URL: "/"}},
+			Paths:      make(map[string]map[string]Operation),
+			Components: Components{SecuritySchemes: map[string]SecurityScheme{"bearerAuth": {Type: "http", Scheme: "bearer", BearerFormat: "JWT"}}},
 		},
 		ids: make(map[string]bool),
 	}

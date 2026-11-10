@@ -51,6 +51,7 @@ func accountTest(t *testing.T) (*Service, *VerificationWorker, *captureEmail) {
 	service, err := NewService(pool, config.Authentication{
 		OTPSecret: []byte("12345678901234567890123456789012"), OutboxKey: []byte("abcdefghijklmnopqrstuvxyz1234567"),
 		EmailFrom: "SiteTrack <sender@example.test>",
+		JWTSeed:   []byte("12345678901234567890123456789012"),
 	})
 	if err != nil {
 		t.Fatal(err)

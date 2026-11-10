@@ -7,6 +7,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Rahmannugar/authlier/accesstoken"
 	"github.com/Rahmannugar/authlier/emailaddress"
 	"github.com/Rahmannugar/authlier/emailverification"
 	"github.com/Rahmannugar/authlier/password"
@@ -25,13 +26,21 @@ type Accounts interface {
 	Signup(context.Context, SignupInput) error
 	Verify(context.Context, VerificationInput) error
 	Resend(context.Context, string) error
+	Login(context.Context, LoginInput) (TokenPair, error)
+	Refresh(context.Context, string) (TokenPair, error)
+	Authenticate(context.Context, string) (Principal, error)
+	Logout(context.Context, Principal) error
 }
 
 type Service struct {
-	pool     *pgxpool.Pool
-	settings config.Authentication
-	cipher   *outbox.PayloadCipher
-	hashing  chan struct{}
+	pool           *pgxpool.Pool
+	settings       config.Authentication
+	cipher         *outbox.PayloadCipher
+	hashing        chan struct{}
+	issuer         *accesstoken.Issuer
+	verifierConfig accesstoken.VerifierConfig
+	dummyHash      string
+	now            func() time.Time
 }
 
 func NewService(pool *pgxpool.Pool, settings config.Authentication) (*Service, error) {
@@ -42,7 +51,11 @@ func NewService(pool *pgxpool.Pool, settings config.Authentication) (*Service, e
 	if err != nil {
 		return nil, err
 	}
-	return &Service{pool: pool, settings: settings, cipher: cipher, hashing: make(chan struct{}, 2)}, nil
+	service := &Service{pool: pool, settings: settings, cipher: cipher, hashing: make(chan struct{}, 2)}
+	if err := service.initSessions(); err != nil {
+		return nil, err
+	}
+	return service, nil
 }
 
 func (s *Service) Signup(ctx context.Context, input SignupInput) error {
