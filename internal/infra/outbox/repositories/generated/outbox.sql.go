@@ -41,39 +41,54 @@ func (q *Queries) ClaimDailyCleanup(ctx context.Context, leaseToken uuid.UUID) (
 	return name, err
 }
 
-const claimEmail = `-- name: ClaimEmail :one
+const claimEmails = `-- name: ClaimEmails :many
 WITH candidate AS (
     SELECT id FROM sitetrack.outbox_events
     WHERE event_type = 'email.verification' AND expires_at > now() AND attempts < 8
         AND ((status = 'pending' AND available_at <= now())
             OR (status = 'processing' AND lease_until <= now()))
-    ORDER BY created_at LIMIT 1 FOR UPDATE SKIP LOCKED
+    ORDER BY created_at, id LIMIT 20 FOR UPDATE SKIP LOCKED
 )
 UPDATE sitetrack.outbox_events AS e SET status = 'processing', attempts = attempts + 1,
     lease_token = $1, lease_until = now() + interval '30 seconds'
 FROM candidate WHERE e.id = candidate.id
-RETURNING e.id, e.payload, e.attempts, e.expires_at, e.lease_token
+RETURNING e.id, e.payload, e.attempts, e.expires_at, e.lease_token, e.lease_until
 `
 
-type ClaimEmailRow struct {
+type ClaimEmailsRow struct {
 	ID         uuid.UUID
 	Payload    []byte
 	Attempts   int32
 	ExpiresAt  pgtype.Timestamptz
 	LeaseToken uuid.NullUUID
+	LeaseUntil pgtype.Timestamptz
 }
 
-func (q *Queries) ClaimEmail(ctx context.Context, leaseToken uuid.NullUUID) (ClaimEmailRow, error) {
-	row := q.db.QueryRow(ctx, claimEmail, leaseToken)
-	var i ClaimEmailRow
-	err := row.Scan(
-		&i.ID,
-		&i.Payload,
-		&i.Attempts,
-		&i.ExpiresAt,
-		&i.LeaseToken,
-	)
-	return i, err
+func (q *Queries) ClaimEmails(ctx context.Context, leaseToken uuid.NullUUID) ([]ClaimEmailsRow, error) {
+	rows, err := q.db.Query(ctx, claimEmails, leaseToken)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ClaimEmailsRow
+	for rows.Next() {
+		var i ClaimEmailsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Payload,
+			&i.Attempts,
+			&i.ExpiresAt,
+			&i.LeaseToken,
+			&i.LeaseUntil,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const completeDailyCleanup = `-- name: CompleteDailyCleanup :execrows

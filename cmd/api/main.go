@@ -15,6 +15,7 @@ import (
 	"sitetrack/internal/config"
 	"sitetrack/internal/infra/database"
 	"sitetrack/internal/infra/telemetry"
+	"sitetrack/internal/projects"
 )
 
 func main() {
@@ -60,7 +61,7 @@ func run(ctx context.Context, logger *slog.Logger) (resultErr error) {
 	if err != nil {
 		return err
 	}
-	router, err := newRouter(pool, monitoring, accounts, cfg.RateLimit.Enabled)
+	router, err := newRouter(pool, monitoring, accounts, projects.NewService(pool), cfg.RateLimit.Enabled)
 	if err != nil {
 		return err
 	}

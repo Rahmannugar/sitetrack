@@ -20,18 +20,18 @@ UPDATE sitetrack.outbox_events AS e SET status = 'failed', payload = NULL,
     error_code = 'expired_or_exhausted', lease_token = NULL, lease_until = NULL
 FROM expired WHERE e.id = expired.id;
 
--- name: ClaimEmail :one
+-- name: ClaimEmails :many
 WITH candidate AS (
     SELECT id FROM sitetrack.outbox_events
     WHERE event_type = 'email.verification' AND expires_at > now() AND attempts < 8
         AND ((status = 'pending' AND available_at <= now())
             OR (status = 'processing' AND lease_until <= now()))
-    ORDER BY created_at LIMIT 1 FOR UPDATE SKIP LOCKED
+    ORDER BY created_at, id LIMIT 20 FOR UPDATE SKIP LOCKED
 )
 UPDATE sitetrack.outbox_events AS e SET status = 'processing', attempts = attempts + 1,
     lease_token = $1, lease_until = now() + interval '30 seconds'
 FROM candidate WHERE e.id = candidate.id
-RETURNING e.id, e.payload, e.attempts, e.expires_at, e.lease_token;
+RETURNING e.id, e.payload, e.attempts, e.expires_at, e.lease_token, e.lease_until;
 
 -- name: PublishEmail :execrows
 UPDATE sitetrack.outbox_events SET status = 'published', payload = NULL,

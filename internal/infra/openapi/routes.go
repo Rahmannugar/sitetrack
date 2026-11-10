@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	SpecPath = "/api/openapi.json"
-	DocsPath = "/api/docs"
+	SpecPath = "/openapi.json"
+	DocsPath = "/docs"
 )
 
 //go:embed scalar.html

@@ -12,7 +12,6 @@ import (
 
 	"github.com/Rahmannugar/authlier/password"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"sitetrack/internal/config"
@@ -23,11 +22,14 @@ import (
 )
 
 type captureEmail struct {
+	mu   sync.Mutex
 	keys []string
 	err  error
 }
 
 func (s *captureEmail) Send(_ context.Context, _ email.Message, key string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.keys = append(s.keys, key)
 	return "provider-message", s.err
 }
@@ -125,7 +127,7 @@ func TestRegistrationDeliveryAndSingleUseOTP(t *testing.T) {
 		t.Fatal("password was not hashed through Authlier")
 	}
 	job, code := queuedCode(t, s, id)
-	if err := worker.SendNext(context.Background()); err != nil {
+	if _, err := worker.SendBatch(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if len(sender.keys) != 1 || sender.keys[0] != "email.verification/"+job.String() {
@@ -181,12 +183,12 @@ func TestEmailRetryKeepsIdempotencyKey(t *testing.T) {
 	_, id := newAccount(t, s)
 	job, _ := queuedCode(t, s, id)
 	sender.err = &email.DeliveryError{Code: "provider_transport"}
-	if err := worker.SendNext(context.Background()); err != nil {
+	if _, err := worker.SendBatch(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	execAccountSQL(t, s.pool, "UPDATE sitetrack.outbox_events SET available_at=now() WHERE id=$1", job)
 	sender.err = nil
-	if err := worker.SendNext(context.Background()); err != nil {
+	if _, err := worker.SendBatch(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if len(sender.keys) != 2 || sender.keys[0] != sender.keys[1] {
@@ -269,16 +271,16 @@ func TestOutboxLeaseFencesStaleWorker(t *testing.T) {
 	_, id := newAccount(t, s)
 	job, _ := queuedCode(t, s, id)
 	queries := outboxdb.New(s.pool)
-	first := uuid.NullUUID{UUID: uuid.New(), Valid: true}
-	second := uuid.NullUUID{UUID: uuid.New(), Valid: true}
-	if _, err := queries.ClaimEmail(context.Background(), first); err != nil {
+	first := uuid.NullUUID{UUID: uuid.Must(uuid.NewV7()), Valid: true}
+	second := uuid.NullUUID{UUID: uuid.Must(uuid.NewV7()), Valid: true}
+	if jobs, err := queries.ClaimEmails(context.Background(), first); err != nil || len(jobs) != 1 {
 		t.Fatal(err)
 	}
-	if _, err := queries.ClaimEmail(context.Background(), second); !errors.Is(err, pgx.ErrNoRows) {
+	if jobs, err := queries.ClaimEmails(context.Background(), second); err != nil || len(jobs) != 0 {
 		t.Fatal("active job was claimed by another worker")
 	}
 	execAccountSQL(t, s.pool, "UPDATE sitetrack.outbox_events SET lease_until=now()-interval '1 second' WHERE id=$1", job)
-	if _, err := queries.ClaimEmail(context.Background(), second); err != nil {
+	if jobs, err := queries.ClaimEmails(context.Background(), second); err != nil || len(jobs) != 1 {
 		t.Fatal(err)
 	}
 	providerID := "provider-id"

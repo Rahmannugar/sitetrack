@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math/rand/v2"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -24,6 +26,7 @@ import (
 )
 
 type VerificationWorker struct {
+	pool       *pgxpool.Pool
 	queries    *outboxdb.Queries
 	accounts   *authdb.Queries
 	cipher     *outbox.PayloadCipher
@@ -33,58 +36,86 @@ type VerificationWorker struct {
 }
 
 func NewVerificationWorker(pool *pgxpool.Pool, cipher *outbox.PayloadCipher, sender email.Sender, monitoring *telemetry.Runtime) (*VerificationWorker, error) {
+	if pool.Config().MaxConns < 2 {
+		return nil, errors.New("worker database pool requires at least two connections for listening and job processing")
+	}
 	outcomes, err := monitoring.Meter.Int64Counter("email.verification.outcomes")
 	if err != nil {
 		return nil, err
 	}
-	return &VerificationWorker{queries: outboxdb.New(pool), accounts: authdb.New(pool), cipher: cipher, sender: sender, monitoring: monitoring, outcomes: outcomes}, nil
+	return &VerificationWorker{pool: pool, queries: outboxdb.New(pool), accounts: authdb.New(pool), cipher: cipher, sender: sender, monitoring: monitoring, outcomes: outcomes}, nil
 }
 
 func (w *VerificationWorker) Run(ctx context.Context) {
-	ticker := time.NewTicker(500 * time.Millisecond)
+	wake := make(chan struct{}, 1)
+	listenerDone := make(chan struct{})
+	go func() { defer close(listenerDone); outbox.Listen(ctx, w.pool, wake, w.monitoring.Logger) }()
+	defer func() { <-listenerDone }()
+	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 	var nextCleanup time.Time
-	for {
-		if ctx.Err() != nil {
-			return
-		}
+	for ctx.Err() == nil {
 		if time.Now().After(nextCleanup) {
 			if err := w.CleanupOTPs(ctx); err != nil && ctx.Err() == nil {
-				w.monitoring.Logger.Error("OTP cleanup failed")
+				w.monitoring.Logger.ErrorContext(ctx, "OTP cleanup failed")
 			}
 			nextCleanup = time.Now().Add(time.Minute)
 		}
-		if err := w.SendNext(ctx); err != nil && ctx.Err() == nil {
-			w.monitoring.Logger.Error("email outbox processing failed")
+		count, err := w.SendBatch(ctx)
+		if err != nil && ctx.Err() == nil {
+			w.monitoring.Logger.ErrorContext(ctx, "email outbox processing failed")
+		}
+		if ctx.Err() != nil {
+			return
+		}
+		if count > 0 && err == nil {
+			continue
 		}
 		select {
 		case <-ctx.Done():
 			return
+		case <-wake:
 		case <-ticker.C:
 		}
 	}
 }
 
-func (w *VerificationWorker) SendNext(ctx context.Context) error {
+func (w *VerificationWorker) SendBatch(ctx context.Context) (int, error) {
 	claim, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
 	if err := w.queries.ExpireJobs(claim); err != nil {
-		return err
+		cancel()
+		return 0, err
 	}
 	lease, err := uuid.NewV7()
 	if err != nil {
-		return err
+		cancel()
+		return 0, err
 	}
-	job, err := w.queries.ClaimEmail(claim, uuid.NullUUID{UUID: lease, Valid: true})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil
-	}
+	jobs, err := w.queries.ClaimEmails(claim, uuid.NullUUID{UUID: lease, Valid: true})
+	cancel()
 	if err != nil {
-		return err
+		return 0, err
 	}
-	if ctx.Err() != nil {
-		return ctx.Err()
+	// We drain the claimed batch before accepting another, even during shutdown.
+	failures := make(chan error, len(jobs))
+	var group sync.WaitGroup
+	for _, job := range jobs {
+		group.Go(func() {
+			if err := w.send(context.WithoutCancel(ctx), job); err != nil {
+				failures <- err
+			}
+		})
 	}
+	group.Wait()
+	close(failures)
+	var result error
+	for failure := range failures {
+		result = errors.Join(result, failure)
+	}
+	return len(jobs), result
+}
+
+func (w *VerificationWorker) send(ctx context.Context, job outboxdb.ClaimEmailsRow) error {
 	payload, err := w.cipher.Open(job.Payload, job.ID[:])
 	var message verificationEmailMessage
 	if err != nil || json.Unmarshal(payload, &message) != nil {
@@ -93,7 +124,11 @@ func (w *VerificationWorker) SendNext(ctx context.Context) error {
 	parent := w.monitoring.Propagator.Extract(context.WithoutCancel(ctx), propagation.MapCarrier{"traceparent": message.TraceParent})
 	operation, span := w.monitoring.Tracer.Start(parent, "email.verification.send", trace.WithSpanKind(trace.SpanKindConsumer))
 	defer span.End()
-	sendTimeout := min(10*time.Second, time.Until(job.ExpiresAt.Time))
+	remainingLease := time.Until(job.LeaseUntil.Time) - 5*time.Second
+	if remainingLease <= 0 {
+		return nil
+	}
+	sendTimeout := min(10*time.Second, time.Until(job.ExpiresAt.Time), remainingLease)
 	if sendTimeout <= 0 {
 		return w.retry(operation, job, &email.DeliveryError{Code: "expired", Permanent: true})
 	}
@@ -114,13 +149,13 @@ func (w *VerificationWorker) SendNext(ctx context.Context) error {
 	return err
 }
 
-func (w *VerificationWorker) retry(ctx context.Context, job outboxdb.ClaimEmailRow, failure error) error {
+func (w *VerificationWorker) retry(ctx context.Context, job outboxdb.ClaimEmailsRow, failure error) error {
 	problem := &email.DeliveryError{Code: "delivery_failure"}
 	var classified *email.DeliveryError
 	if errors.As(failure, &classified) {
 		problem = classified
 	}
-	delay := max(time.Duration(1<<min(job.Attempts, 7))*time.Second, problem.RetryAfter)
+	delay := retryDelay(job.Attempts, problem.RetryAfter)
 	next := time.Now().Add(delay)
 	status := "pending"
 	if problem.Permanent || job.Attempts >= 8 || !next.Before(job.ExpiresAt.Time) {
@@ -137,6 +172,11 @@ func (w *VerificationWorker) retry(ctx context.Context, job outboxdb.ClaimEmailR
 		w.monitoring.Logger.WarnContext(ctx, "verification email delivery failed", "job_id", job.ID.String(), "outcome", status, "error_code", problem.Code)
 	}
 	return err
+}
+
+func retryDelay(attempt int32, retryAfter time.Duration) time.Duration {
+	backoff := time.Duration(1<<min(max(attempt, 1), 7)) * time.Second
+	return max(backoff/2, retryAfter) + time.Duration(rand.Int64N(int64(backoff/2)+1))
 }
 
 func (w *VerificationWorker) CleanupOTPs(ctx context.Context) error {

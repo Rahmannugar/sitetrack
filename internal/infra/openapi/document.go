@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -37,6 +38,7 @@ type Server struct {
 }
 
 type Operation struct {
+	Parameters  []Parameter           `json:"parameters,omitempty"`
 	OperationID string                `json:"operationId"`
 	Summary     string                `json:"summary"`
 	Tags        []string              `json:"tags"`
@@ -45,14 +47,36 @@ type Operation struct {
 	Security    []map[string][]string `json:"security,omitempty"`
 }
 
+type Parameter struct {
+	Name     string             `json:"name"`
+	In       string             `json:"in"`
+	Required bool               `json:"required"`
+	Schema   *jsonschema.Schema `json:"schema"`
+}
+
+func Parameters(schema *jsonschema.Schema, location string) []Parameter {
+	result := make([]Parameter, 0, len(schema.Properties))
+	for name, property := range schema.Properties {
+		required := location == "path"
+		for _, field := range schema.Required {
+			if field == name {
+				required = true
+			}
+		}
+		result = append(result, Parameter{Name: name, In: location, Required: required, Schema: property})
+	}
+	slices.SortFunc(result, func(a, b Parameter) int { return strings.Compare(a.Name, b.Name) })
+	return result
+}
+
 type RequestBody struct {
 	Required bool                 `json:"required"`
-	Content  map[string]MediaType `json:"content"`
+	Content  map[string]MediaType `json:"content,omitempty"`
 }
 
 type Response struct {
 	Description string               `json:"description"`
-	Content     map[string]MediaType `json:"content"`
+	Content     map[string]MediaType `json:"content,omitempty"`
 }
 
 type MediaType struct {
@@ -85,6 +109,23 @@ func New() *Registry {
 
 func (r *Registry) Register(router *gin.RouterGroup, method, route string, operation Operation, handlers ...gin.HandlerFunc) error {
 	mounted := path.Join(router.BasePath(), route)
+	parts := strings.Split(mounted, "/")
+	for i, part := range parts {
+		if strings.HasPrefix(part, ":") {
+			name := strings.TrimPrefix(part, ":")
+			found := false
+			for _, parameter := range operation.Parameters {
+				if parameter.In == "path" && parameter.Name == name && parameter.Required {
+					found = true
+				}
+			}
+			if !found {
+				return fmt.Errorf("missing OpenAPI path parameter %s", name)
+			}
+			parts[i] = "{" + name + "}"
+		}
+	}
+	mounted = strings.Join(parts, "/")
 	methodKey := strings.ToLower(method)
 	if operation.OperationID == "" || operation.Summary == "" || len(operation.Responses) == 0 {
 		return fmt.Errorf("incomplete OpenAPI operation for %s %s", method, mounted)

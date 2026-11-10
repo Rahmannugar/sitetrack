@@ -77,3 +77,29 @@ func TestVerificationBodyRejectsMalformedAndTrailingInput(t *testing.T) {
 		}
 	}
 }
+
+func TestGeneratedProjectAdminContractRejectsNull(t *testing.T) {
+	body, err := request.NewBody[struct {
+		IsAdmin *bool `json:"is_admin" binding:"required"`
+	}]()
+	if err != nil {
+		t.Fatal(err)
+	}
+	schema, err := body.Schema.Resolve(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, input := range []struct {
+		json  string
+		valid bool
+	}{{`{"is_admin":false}`, true}, {`{"is_admin":true}`, true}, {`{"is_admin":null}`, false}, {`{}`, false}} {
+		var value any
+		if err = json.Unmarshal([]byte(input.json), &value); err != nil {
+			t.Fatal(err)
+		}
+		if valid := schema.Validate(value) == nil; valid != input.valid {
+			raw, _ := json.Marshal(body.Schema)
+			t.Fatalf("contract disagrees for %s: %s", input.json, raw)
+		}
+	}
+}
