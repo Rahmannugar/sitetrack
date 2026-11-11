@@ -88,7 +88,7 @@ func deliveryTest(t *testing.T) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	accounts, err := authentication.NewService(pool, config.Authentication{OTPSecret: []byte("12345678901234567890123456789012"), OutboxKey: []byte("12345678901234567890123456789012"), JWTSeed: []byte("12345678901234567890123456789012")})
+	accounts, err := authentication.NewService(pool, config.Authentication{OTPSecret: []byte("12345678901234567890123456789012"), OutboxKey: []byte("12345678901234567890123456789012"), JWTSecret: []byte("12345678901234567890123456789012")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func deliveryTest(t *testing.T) *fixture {
 				return
 			}
 		}
-		for _, sql := range []string{"DELETE FROM sitetrack.company_inventory WHERE material_id=ANY($1)", "DELETE FROM sitetrack.project_inventory WHERE material_id=ANY($1)", "DELETE FROM sitetrack.materials WHERE id=ANY($1)"} {
+		for _, sql := range []string{"DELETE FROM sitetrack.company_store WHERE material_id=ANY($1)", "DELETE FROM sitetrack.project_store WHERE material_id=ANY($1)", "DELETE FROM sitetrack.materials WHERE id=ANY($1)"} {
 			if _, err := tx.Exec(ctx, sql, f.materialIDs); err != nil {
 				t.Error(err)
 				return
@@ -205,7 +205,7 @@ func (f *fixture) move(t *testing.T, d Delivery, action string) Delivery {
 func (f *fixture) balances(t *testing.T, company, project, companyTransit, projectTransit string) {
 	t.Helper()
 	var c, p, ct, pt string
-	if err := f.pool.QueryRow(context.Background(), `SELECT c.quantity::text,p.quantity::text,c.in_transit_to_projects::text,p.in_transit::text FROM sitetrack.company_inventory c JOIN sitetrack.project_inventory p USING(material_id) WHERE c.material_id=$1 AND p.project_id=$2`, f.materialIDs[0], f.projectsList[0].ID).Scan(&c, &p, &ct, &pt); err != nil {
+	if err := f.pool.QueryRow(context.Background(), `SELECT c.quantity::text,p.quantity::text,c.in_transit_to_projects::text,p.in_transit::text FROM sitetrack.company_store c JOIN sitetrack.project_store p USING(material_id) WHERE c.material_id=$1 AND p.project_id=$2`, f.materialIDs[0], f.projectsList[0].ID).Scan(&c, &p, &ct, &pt); err != nil {
 		t.Fatal(err)
 	}
 	if c != company || p != project || ct != companyTransit || pt != projectTransit {

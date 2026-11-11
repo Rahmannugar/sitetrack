@@ -84,7 +84,7 @@ func inventoryTest(t *testing.T) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	accounts, err := authentication.NewService(pool, config.Authentication{OTPSecret: []byte("12345678901234567890123456789012"), OutboxKey: []byte("abcdefghijklmnopqrstuvxyz1234567"), JWTSeed: []byte("12345678901234567890123456789012")})
+	accounts, err := authentication.NewService(pool, config.Authentication{OTPSecret: []byte("12345678901234567890123456789012"), OutboxKey: []byte("abcdefghijklmnopqrstuvxyz1234567"), JWTSecret: []byte("12345678901234567890123456789012")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,8 +112,8 @@ func inventoryTest(t *testing.T) *fixture {
 		}
 		defer rollback(tx)
 		for _, sql := range []string{
-			"DELETE FROM sitetrack.company_inventory WHERE material_id IN (SELECT id FROM sitetrack.materials WHERE category_id=ANY($1))",
-			"DELETE FROM sitetrack.project_inventory WHERE material_id IN (SELECT id FROM sitetrack.materials WHERE category_id=ANY($1))",
+			"DELETE FROM sitetrack.company_store WHERE material_id IN (SELECT id FROM sitetrack.materials WHERE category_id=ANY($1))",
+			"DELETE FROM sitetrack.project_store WHERE material_id IN (SELECT id FROM sitetrack.materials WHERE category_id=ANY($1))",
 			"DELETE FROM sitetrack.materials WHERE category_id=ANY($1)", "DELETE FROM sitetrack.material_categories WHERE id=ANY($1)",
 		} {
 			if _, err := tx.Exec(ctx, sql, f.categories); err != nil {
@@ -217,7 +217,7 @@ func TestStockExactConcurrentAdditionsReorderAndBounds(t *testing.T) {
 		t.Fatal("overflow changed stock", err)
 	}
 	for _, value := range []string{"-0.001", "NaN"} {
-		if _, err := f.s.pool.Exec(ctx, "UPDATE sitetrack.company_inventory SET quantity=$2::text::numeric WHERE material_id=$1", m.ID, value); err == nil {
+		if _, err := f.s.pool.Exec(ctx, "UPDATE sitetrack.company_store SET quantity=$2::text::numeric WHERE material_id=$1", m.ID, value); err == nil {
 			t.Fatal("database accepted invalid stock", value)
 		}
 	}
@@ -238,9 +238,9 @@ func TestInventoryMaterialGuardsRollbackAndRemovalRace(t *testing.T) {
 	if err := f.catalogue.Remove(ctx, f.users[1], m.ID); !errors.Is(err, materials.ErrConflict) {
 		t.Fatal("stocked material removed", err)
 	}
-	f.exec(t, `CREATE FUNCTION sitetrack.reject_test_stock() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'forced stock failure'; END $$; CREATE TRIGGER reject_test_stock BEFORE UPDATE ON sitetrack.company_inventory FOR EACH ROW EXECUTE FUNCTION sitetrack.reject_test_stock();`)
+	f.exec(t, `CREATE FUNCTION sitetrack.reject_test_stock() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'forced stock failure'; END $$; CREATE TRIGGER reject_test_stock BEFORE UPDATE ON sitetrack.company_store FOR EACH ROW EXECUTE FUNCTION sitetrack.reject_test_stock();`)
 	drop := func() {
-		f.exec(t, "DROP TRIGGER IF EXISTS reject_test_stock ON sitetrack.company_inventory; DROP FUNCTION IF EXISTS sitetrack.reject_test_stock()")
+		f.exec(t, "DROP TRIGGER IF EXISTS reject_test_stock ON sitetrack.company_store; DROP FUNCTION IF EXISTS sitetrack.reject_test_stock()")
 	}
 	defer drop()
 	if _, err := f.s.AddStock(ctx, f.users[1], m.ID, QuantityInput{Quantity: "1"}); err == nil {
@@ -277,14 +277,14 @@ func TestInventoryMaterialGuardsRollbackAndRemovalRace(t *testing.T) {
 	}
 	p := f.project(t)
 	projectMaterial := f.material(t, c.ID, " Project")
-	f.exec(t, "INSERT INTO sitetrack.project_inventory(project_id,material_id,quantity,in_transit) VALUES($1,$2,0,1)", p.ID, projectMaterial.ID)
+	f.exec(t, "INSERT INTO sitetrack.project_store(project_id,material_id,quantity,in_transit) VALUES($1,$2,0,1)", p.ID, projectMaterial.ID)
 	if err := f.catalogue.Remove(ctx, f.users[1], projectMaterial.ID); !errors.Is(err, materials.ErrConflict) {
 		t.Fatal("in-transit material removed", err)
 	}
 	if err := f.projects.Remove(ctx, f.users[0], p.ID); !errors.Is(err, projects.ErrStock) {
 		t.Fatal("project with transit goods removed", err)
 	}
-	f.exec(t, "UPDATE sitetrack.project_inventory SET in_transit=0 WHERE project_id=$1", p.ID)
+	f.exec(t, "UPDATE sitetrack.project_store SET in_transit=0 WHERE project_id=$1", p.ID)
 	if err := f.projects.Remove(ctx, f.users[0], p.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -317,7 +317,7 @@ func TestInventoryListsCursorSortsAndProjectAccess(t *testing.T) {
 			date := time.Date(2026, 11, 11, 12+i%3, 0, 0, 0, time.UTC)
 			delivered = &date
 		}
-		f.exec(t, "INSERT INTO sitetrack.project_inventory(project_id,material_id,quantity,last_delivery_at) VALUES($1,$2,$3::text::numeric,$4)", p.ID, m.ID, value, delivered)
+		f.exec(t, "INSERT INTO sitetrack.project_store(project_id,material_id,quantity,last_delivery_at) VALUES($1,$2,$3::text::numeric,$4)", p.ID, m.ID, value, delivered)
 	}
 	for _, order := range []string{"asc", "desc"} {
 		for _, sort := range []string{"name", "quantity", "status"} {
@@ -463,7 +463,7 @@ func TestInventoryHTTPPermissionsContractsAndTelemetry(t *testing.T) {
 	for i := range 23 {
 		item = f.material(t, c.ID, fmt.Sprintf(" HTTP %02d", i))
 	}
-	f.exec(t, "INSERT INTO sitetrack.project_inventory(project_id,material_id,quantity) VALUES($1,$2,2.125)", p.ID, item.ID)
+	f.exec(t, "INSERT INTO sitetrack.project_store(project_id,material_id,quantity) VALUES($1,$2,2.125)", p.ID, item.ID)
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	registry := openapi.New()

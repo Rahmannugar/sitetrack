@@ -33,13 +33,53 @@ tasks:
       - sh tools/models/setup.sh "{{.ROOT_DIR}}/bin/models/tla2tools.jar"
       - go -C tools test ./models -count=1 -v -timeout=10m
 
+  seed:
+    desc: Populate a fresh explicitly selected seed database
+    cmds:
+      - go run ./cmd/seed {{.CLI_ARGS}}
+
+  verify-endpoints:
+    desc: Check every endpoint and SQL plans on a disposable full-scale database copy
+    vars:
+      DATABASE: '{{.DATABASE | default "sitetrack"}}'
+    env:
+      SITETRACK_ENDPOINT_SOURCE_DATABASE: '{{.DATABASE}}'
+    cmds:
+      - sh tests/verification/endpoints.sh
+
+  load-up:
+    desc: Start the API and worker on the selected seeded database
+    vars:
+      DATABASE: '{{.DATABASE | default "sitetrack"}}'
+    env:
+      SITETRACK_COMPOSE_DATABASE_NAME: '{{.DATABASE}}'
+      SITETRACK_RATE_LIMIT_ENABLED: 'false'
+      SITETRACK_TELEMETRY_ENABLED: 'false'
+    cmds:
+      - docker compose up -d --wait
+      - docker compose rm -f migrate
+
+  load:
+    desc: Run k6 against the seeded API
+    vars:
+      K6: '{{.K6 | default "k6"}}'
+    cmds:
+      - '"{{.K6}}" run {{.CLI_ARGS}} tests/load/app.js'
+
+  query-plans:
+    desc: Measure application SQL against the seeded database
+    vars:
+      DATABASE: '{{.DATABASE | default "sitetrack"}}'
+    cmds:
+      - python3 tests/load/query_plans.py --psql "docker compose exec -T postgres psql -U sitetrack -d {{.DATABASE}}" {{.CLI_ARGS}}
+
   test-integration:
     desc: Run database tests using SITETRACK_TEST_DATABASE_URL
     preconditions:
       - sh: test -n "$SITETRACK_TEST_DATABASE_URL"
         msg: Set SITETRACK_TEST_DATABASE_URL to an isolated PostgreSQL database
     cmds:
-      - go test -p 1 ./internal/infra/database ./internal/authentication ./internal/projects ./internal/tasks ./internal/materials ./internal/inventory ./internal/deliveries ./internal/infra/outbox -count=1
+      - go test -p 1 ./internal/infra/database ./internal/authentication ./internal/projects ./internal/tasks ./internal/materials ./internal/inventory ./internal/deliveries ./internal/infra/outbox ./internal/seed -count=1
 
   db-up:
     desc: Start PostgreSQL and wait for it to become healthy

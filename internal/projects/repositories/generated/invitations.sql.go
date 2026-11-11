@@ -24,7 +24,7 @@ func (q *Queries) CancelProjectInvitations(ctx context.Context, projectID string
 
 const createInvitation = `-- name: CreateInvitation :one
 INSERT INTO sitetrack.project_invitations(id,project_id,inviter_id,invitee_id)
-VALUES($1,$2,$3,$4) RETURNING id, project_id, inviter_id, invitee_id, status, created_at, completed_at
+VALUES($1,$2,$3,$4) RETURNING id, project_id, inviter_id, invitee_id, status, created_at, completed_at, expires_at
 `
 
 type CreateInvitationParams struct {
@@ -50,13 +50,63 @@ func (q *Queries) CreateInvitation(ctx context.Context, arg CreateInvitationPara
 		&i.Status,
 		&i.CreatedAt,
 		&i.CompletedAt,
+		&i.ExpiresAt,
 	)
 	return i, err
 }
 
+const expireInvitation = `-- name: ExpireInvitation :one
+UPDATE sitetrack.project_invitations SET status='expired',completed_at=expires_at
+WHERE id=$1 AND project_id=$2 AND status='pending' AND expires_at<=clock_timestamp()
+RETURNING id
+`
+
+type ExpireInvitationParams struct {
+	ID        uuid.UUID
+	ProjectID string
+}
+
+func (q *Queries) ExpireInvitation(ctx context.Context, arg ExpireInvitationParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, expireInvitation, arg.ID, arg.ProjectID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const expireInviteeInvitations = `-- name: ExpireInviteeInvitations :many
+UPDATE sitetrack.project_invitations SET status='expired',completed_at=expires_at
+WHERE project_id=$1 AND invitee_id=$2 AND status='pending' AND expires_at<=clock_timestamp()
+RETURNING id
+`
+
+type ExpireInviteeInvitationsParams struct {
+	ProjectID string
+	InviteeID uuid.UUID
+}
+
+func (q *Queries) ExpireInviteeInvitations(ctx context.Context, arg ExpireInviteeInvitationsParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, expireInviteeInvitations, arg.ProjectID, arg.InviteeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const finishInvitation = `-- name: FinishInvitation :one
 UPDATE sitetrack.project_invitations SET status=$3,completed_at=clock_timestamp()
-WHERE id=$1 AND project_id=$2 AND status='pending' RETURNING id, project_id, inviter_id, invitee_id, status, created_at, completed_at
+WHERE id=$1 AND project_id=$2 AND status='pending' AND expires_at>clock_timestamp() RETURNING id, project_id, inviter_id, invitee_id, status, created_at, completed_at, expires_at
 `
 
 type FinishInvitationParams struct {
@@ -76,12 +126,13 @@ func (q *Queries) FinishInvitation(ctx context.Context, arg FinishInvitationPara
 		&i.Status,
 		&i.CreatedAt,
 		&i.CompletedAt,
+		&i.ExpiresAt,
 	)
 	return i, err
 }
 
 const getInvitation = `-- name: GetInvitation :one
-SELECT id, project_id, inviter_id, invitee_id, status, created_at, completed_at FROM sitetrack.project_invitations WHERE id=$1 AND project_id=$2
+SELECT id, project_id, inviter_id, invitee_id, status, created_at, completed_at, expires_at FROM sitetrack.project_invitations WHERE id=$1 AND project_id=$2
 `
 
 type GetInvitationParams struct {
@@ -100,6 +151,7 @@ func (q *Queries) GetInvitation(ctx context.Context, arg GetInvitationParams) (S
 		&i.Status,
 		&i.CreatedAt,
 		&i.CompletedAt,
+		&i.ExpiresAt,
 	)
 	return i, err
 }
@@ -121,7 +173,7 @@ func (q *Queries) InvitationProject(ctx context.Context, arg InvitationProjectPa
 }
 
 const listInvitations = `-- name: ListInvitations :many
-SELECT id, project_id, inviter_id, invitee_id, status, created_at, completed_at FROM sitetrack.project_invitations WHERE project_id=$1
+SELECT id, project_id, inviter_id, invitee_id, status, created_at, completed_at, expires_at FROM sitetrack.invitation_states WHERE project_id=$1
 AND ($2::text='' OR status=NULLIF($2::text,'')::sitetrack.invitation_status)
 AND ($3::timestamptz IS NULL OR (created_at,id)<($3,$4::uuid))
 ORDER BY created_at DESC,id DESC LIMIT $5
@@ -135,7 +187,7 @@ type ListInvitationsParams struct {
 	PageSize  int32
 }
 
-func (q *Queries) ListInvitations(ctx context.Context, arg ListInvitationsParams) ([]SitetrackProjectInvitation, error) {
+func (q *Queries) ListInvitations(ctx context.Context, arg ListInvitationsParams) ([]SitetrackInvitationState, error) {
 	rows, err := q.db.Query(ctx, listInvitations,
 		arg.ProjectID,
 		arg.Status,
@@ -147,9 +199,9 @@ func (q *Queries) ListInvitations(ctx context.Context, arg ListInvitationsParams
 		return nil, err
 	}
 	defer rows.Close()
-	var items []SitetrackProjectInvitation
+	var items []SitetrackInvitationState
 	for rows.Next() {
-		var i SitetrackProjectInvitation
+		var i SitetrackInvitationState
 		if err := rows.Scan(
 			&i.ID,
 			&i.ProjectID,
@@ -158,6 +210,7 @@ func (q *Queries) ListInvitations(ctx context.Context, arg ListInvitationsParams
 			&i.Status,
 			&i.CreatedAt,
 			&i.CompletedAt,
+			&i.ExpiresAt,
 		); err != nil {
 			return nil, err
 		}

@@ -134,9 +134,20 @@ func (s *Service) Relationships(ctx context.Context, actor uuid.UUID, project, i
 	if err != nil || after.Steps < 0 {
 		return RelationshipPage{}, ErrInvalid
 	}
-	rows, err := q.ListRelationships(ctx, taskdb.ListRelationshipsParams{ProjectID: project, TaskID: id, Direction: input.Direction, AfterID: after.ID, AfterSteps: after.Steps, PageSize: int32(input.Limit + 1)})
-	if err != nil {
-		return RelationshipPage{}, err
+	var rows []taskdb.ListRelationshipsRow
+	if input.Direction == "dependents" {
+		result, err := q.ListDependents(ctx, taskdb.ListDependentsParams{ProjectID: project, TaskID: id, AfterID: after.ID, AfterSteps: after.Steps, PageSize: int32(input.Limit + 1)})
+		if err != nil {
+			return RelationshipPage{}, err
+		}
+		for _, row := range result {
+			rows = append(rows, taskdb.ListRelationshipsRow(row))
+		}
+	} else {
+		rows, err = q.ListRelationships(ctx, taskdb.ListRelationshipsParams{ProjectID: project, TaskID: id, AfterID: after.ID, AfterSteps: after.Steps, PageSize: int32(input.Limit + 1)})
+		if err != nil {
+			return RelationshipPage{}, err
+		}
 	}
 	page := RelationshipPage{Items: make([]Relationship, 0, input.Limit)}
 	more := len(rows) > input.Limit

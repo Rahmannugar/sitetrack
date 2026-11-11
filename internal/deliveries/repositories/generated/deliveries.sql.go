@@ -128,7 +128,7 @@ func (q *Queries) DeliveryProject(ctx context.Context, id uuid.UUID) (string, er
 }
 
 const ensureCompanyInventory = `-- name: EnsureCompanyInventory :exec
-INSERT INTO sitetrack.company_inventory(material_id) SELECT unnest($1::uuid[]) ON CONFLICT DO NOTHING
+INSERT INTO sitetrack.company_store(material_id) SELECT unnest($1::uuid[]) ON CONFLICT DO NOTHING
 `
 
 func (q *Queries) EnsureCompanyInventory(ctx context.Context, materialIds []uuid.UUID) error {
@@ -137,7 +137,7 @@ func (q *Queries) EnsureCompanyInventory(ctx context.Context, materialIds []uuid
 }
 
 const ensureProjectInventory = `-- name: EnsureProjectInventory :exec
-INSERT INTO sitetrack.project_inventory(project_id,material_id)
+INSERT INTO sitetrack.project_store(project_id,material_id)
 SELECT $1,unnest($2::uuid[]) ON CONFLICT DO NOTHING
 `
 
@@ -437,7 +437,7 @@ func (q *Queries) ProjectAccess(ctx context.Context, arg ProjectAccessParams) (P
 }
 
 const receiveCompanyStock = `-- name: ReceiveCompanyStock :exec
-UPDATE sitetrack.company_inventory i SET quantity=i.quantity+line.amount::numeric,updated_at=clock_timestamp()
+UPDATE sitetrack.company_store i SET quantity=i.quantity+line.amount::numeric,updated_at=clock_timestamp()
 FROM (SELECT unnest($1::uuid[]) AS material_id,unnest($2::text[]) AS amount) line
 WHERE i.material_id=line.material_id
 `
@@ -453,7 +453,7 @@ func (q *Queries) ReceiveCompanyStock(ctx context.Context, arg ReceiveCompanySto
 }
 
 const receiveProjectStock = `-- name: ReceiveProjectStock :exec
-UPDATE sitetrack.project_inventory i SET quantity=i.quantity+line.amount::numeric,updated_at=clock_timestamp(),last_delivery_at=clock_timestamp()
+UPDATE sitetrack.project_store i SET quantity=i.quantity+line.amount::numeric,updated_at=clock_timestamp(),last_delivery_at=clock_timestamp()
 FROM (SELECT unnest($2::uuid[]) AS material_id,unnest($3::text[]) AS amount) line
 WHERE i.project_id=$1 AND i.material_id=line.material_id
 `
@@ -470,7 +470,7 @@ func (q *Queries) ReceiveProjectStock(ctx context.Context, arg ReceiveProjectSto
 }
 
 const releaseCompanyStock = `-- name: ReleaseCompanyStock :exec
-UPDATE sitetrack.company_inventory i SET quantity=i.quantity+CASE WHEN $1::boolean THEN line.amount::numeric ELSE 0 END,
+UPDATE sitetrack.company_store i SET quantity=i.quantity+CASE WHEN $1::boolean THEN line.amount::numeric ELSE 0 END,
 in_transit_to_projects=i.in_transit_to_projects-line.amount::numeric,updated_at=clock_timestamp()
 FROM (SELECT unnest($2::uuid[]) AS material_id,unnest($3::text[]) AS amount) line
 WHERE i.material_id=line.material_id
@@ -488,7 +488,7 @@ func (q *Queries) ReleaseCompanyStock(ctx context.Context, arg ReleaseCompanySto
 }
 
 const releaseProjectStock = `-- name: ReleaseProjectStock :exec
-UPDATE sitetrack.project_inventory i SET quantity=i.quantity+CASE WHEN $1::boolean THEN line.amount::numeric ELSE 0 END,
+UPDATE sitetrack.project_store i SET quantity=i.quantity+CASE WHEN $1::boolean THEN line.amount::numeric ELSE 0 END,
 in_transit=i.in_transit-line.amount::numeric,updated_at=clock_timestamp(),last_delivery_at=CASE WHEN $1::boolean THEN clock_timestamp() ELSE i.last_delivery_at END
 FROM (SELECT unnest($3::uuid[]) AS material_id,unnest($4::text[]) AS amount) line
 WHERE i.project_id=$2 AND i.material_id=line.material_id
@@ -512,7 +512,7 @@ func (q *Queries) ReleaseProjectStock(ctx context.Context, arg ReleaseProjectSto
 }
 
 const sendCompanyStock = `-- name: SendCompanyStock :execrows
-UPDATE sitetrack.company_inventory i SET quantity=i.quantity-line.amount::numeric,in_transit_to_projects=i.in_transit_to_projects+line.amount::numeric,updated_at=clock_timestamp()
+UPDATE sitetrack.company_store i SET quantity=i.quantity-line.amount::numeric,in_transit_to_projects=i.in_transit_to_projects+line.amount::numeric,updated_at=clock_timestamp()
 FROM (SELECT unnest($1::uuid[]) AS material_id,unnest($2::text[]) AS amount) line
 WHERE i.material_id=line.material_id AND i.quantity>=line.amount::numeric
 `
@@ -531,7 +531,7 @@ func (q *Queries) SendCompanyStock(ctx context.Context, arg SendCompanyStockPara
 }
 
 const sendProjectStock = `-- name: SendProjectStock :execrows
-UPDATE sitetrack.project_inventory i SET quantity=i.quantity-line.amount::numeric,in_transit=i.in_transit+line.amount::numeric,updated_at=clock_timestamp(),last_delivery_at=clock_timestamp()
+UPDATE sitetrack.project_store i SET quantity=i.quantity-line.amount::numeric,in_transit=i.in_transit+line.amount::numeric,updated_at=clock_timestamp(),last_delivery_at=clock_timestamp()
 FROM (SELECT unnest($2::uuid[]) AS material_id,unnest($3::text[]) AS amount) line
 WHERE i.project_id=$1 AND i.material_id=line.material_id AND i.quantity>=line.amount::numeric
 `

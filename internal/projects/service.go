@@ -214,9 +214,24 @@ func (s *Service) List(ctx context.Context, actor uuid.UUID, input ListInput) (P
 		}
 	}
 
-	rows, err := projectdb.New(s.pool).ListProjects(ctx, projectdb.ListProjectsParams{Actor: actor, Search: input.Search, SortBy: input.Sort, AfterID: after.ID, AfterValue: after.Value, AfterDate: afterDate, AfterPercentage: afterPercentage, AfterCount: afterCount, LateOnly: input.LateOnly, PageSize: int32(input.Limit + 1)})
-	if err != nil {
-		return Page{}, err
+	var rows []projectdb.GetProjectRow
+	queries := projectdb.New(s.pool)
+	if input.LateOnly || input.Sort == "completion_percentage" || input.Sort == "late_count" {
+		result, err := queries.ListProjectsBySummary(ctx, projectdb.ListProjectsBySummaryParams{Actor: actor, Search: input.Search, SortBy: input.Sort, AfterID: after.ID, AfterValue: after.Value, AfterDate: afterDate, AfterPercentage: afterPercentage, AfterCount: afterCount, LateOnly: input.LateOnly, PageSize: int32(input.Limit + 1)})
+		if err != nil {
+			return Page{}, err
+		}
+		for _, row := range result {
+			rows = append(rows, projectdb.GetProjectRow(row))
+		}
+	} else {
+		result, err := queries.ListProjects(ctx, projectdb.ListProjectsParams{Actor: actor, Search: input.Search, SortBy: input.Sort, AfterID: after.ID, AfterValue: after.Value, AfterDate: afterDate, AfterPercentage: afterPercentage, AfterCount: afterCount, LateOnly: input.LateOnly, PageSize: int32(input.Limit + 1)})
+		if err != nil {
+			return Page{}, err
+		}
+		for _, row := range result {
+			rows = append(rows, projectdb.GetProjectRow(row))
+		}
 	}
 	page := Page{Items: make([]Project, 0, input.Limit)}
 	more := len(rows) > input.Limit

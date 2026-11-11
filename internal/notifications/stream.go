@@ -141,7 +141,7 @@ func (s *Service) Stream(c *gin.Context, accounts authentication.Accounts, input
 			for _, row := range rows {
 				after = row.Revision
 				if row.Visible {
-					items = append(items, notification(notificationdb.ListNotificationsRow{ID: row.ID, ProjectID: row.ProjectID, InvitationID: row.InvitationID, Type: row.Type, Title: row.Title, Message: row.Message, ReadAt: row.ReadAt, CreatedAt: row.CreatedAt, InvitationStatus: row.InvitationStatus}))
+					items = append(items, notification(notificationdb.ListNotificationsRow{ID: row.ID, ProjectID: row.ProjectID, InvitationID: row.InvitationID, Type: row.Type, Title: row.Title, Message: row.Message, ReadAt: row.ReadAt, CreatedAt: row.CreatedAt, InvitationStatus: row.InvitationStatus, InvitationExpiresAt: row.InvitationExpiresAt}))
 				}
 			}
 			count, err := s.Unread(ctx, actor)

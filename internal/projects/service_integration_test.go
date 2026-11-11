@@ -48,7 +48,7 @@ func projectTest(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	cancel()
-	accounts, err := authentication.NewService(pool, config.Authentication{OTPSecret: []byte("12345678901234567890123456789012"), OutboxKey: []byte("abcdefghijklmnopqrstuvxyz1234567"), JWTSeed: []byte("12345678901234567890123456789012")})
+	accounts, err := authentication.NewService(pool, config.Authentication{OTPSecret: []byte("12345678901234567890123456789012"), OutboxKey: []byte("abcdefghijklmnopqrstuvxyz1234567"), JWTSecret: []byte("12345678901234567890123456789012")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -327,7 +327,7 @@ func TestProjectPaginationScopesSearchAndStableTies(t *testing.T) {
 	for range 5 {
 		f.create(t, "Same Name")
 	}
-	for _, sort := range []string{"id", "name", "start_date"} {
+	for _, sort := range []string{"id", "name", "start_date", "completion_percentage", "late_count"} {
 		input := ListInput{Sort: sort, Search: "same", Limit: 2}
 		seen := map[string]bool{}
 		for range 4 {

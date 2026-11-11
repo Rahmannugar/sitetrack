@@ -13,9 +13,9 @@ import (
 )
 
 const addStock = `-- name: AddStock :exec
-INSERT INTO sitetrack.company_inventory(material_id,quantity)
+INSERT INTO sitetrack.company_store(material_id,quantity)
 VALUES($1,$2::text::numeric)
-ON CONFLICT(material_id) DO UPDATE SET quantity=company_inventory.quantity+EXCLUDED.quantity,updated_at=clock_timestamp()
+ON CONFLICT(material_id) DO UPDATE SET quantity=company_store.quantity+EXCLUDED.quantity,updated_at=clock_timestamp()
 `
 
 type AddStockParams struct {
@@ -350,7 +350,7 @@ func (q *Queries) ProjectItem(ctx context.Context, arg ProjectItemParams) (Proje
 }
 
 const setReorderPoint = `-- name: SetReorderPoint :exec
-INSERT INTO sitetrack.company_inventory(material_id,reorder_point)
+INSERT INTO sitetrack.company_store(material_id,reorder_point)
 VALUES($1,$2::text::numeric)
 ON CONFLICT(material_id) DO UPDATE SET reorder_point=EXCLUDED.reorder_point,updated_at=clock_timestamp()
 `

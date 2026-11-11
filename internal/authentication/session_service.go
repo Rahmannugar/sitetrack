@@ -26,10 +26,10 @@ const (
 )
 
 func (s *Service) initSessions() error {
-	if len(s.settings.JWTSeed) != ed25519.SeedSize {
-		return errors.New("SITETRACK_JWT_SIGNING_SEED must contain 32 bytes encoded as hex")
+	if len(s.settings.JWTSecret) != ed25519.SeedSize {
+		return errors.New("SITETRACK_JWT_SIGNING_SECRET must contain 32 bytes encoded as hex")
 	}
-	key := ed25519.NewKeyFromSeed(s.settings.JWTSeed)
+	key := ed25519.NewKeyFromSeed(s.settings.JWTSecret)
 	s.now = time.Now
 	var err error
 	s.issuer, err = accesstoken.NewIssuer(accesstoken.IssuerConfig{

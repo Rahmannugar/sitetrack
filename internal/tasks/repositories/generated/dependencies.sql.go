@@ -83,16 +83,74 @@ func (q *Queries) ListDependencies(ctx context.Context, arg ListDependenciesPara
 	return items, nil
 }
 
+const listDependents = `-- name: ListDependents :many
+WITH RECURSIVE paths(id,steps) AS (
+ SELECT d.dependent_task_id,1::integer FROM sitetrack.task_dependencies d
+ WHERE d.project_id=$4 AND d.required_task_id=$5
+ UNION
+ SELECT d.dependent_task_id,p.steps+1 FROM paths p
+ JOIN sitetrack.task_dependencies d ON d.required_task_id=p.id
+ WHERE d.project_id=$4
+), distances AS (SELECT paths.id,min(paths.steps)::integer AS steps FROM paths GROUP BY paths.id)
+SELECT t.id,t.name,t.status,d.steps FROM distances d JOIN sitetrack.tasks t ON t.id=d.id
+WHERE ($1::text='' OR (d.steps,t.id)>($2::integer,$1))
+ORDER BY d.steps,t.id LIMIT $3
+`
+
+type ListDependentsParams struct {
+	AfterID    string
+	AfterSteps int32
+	PageSize   int32
+	ProjectID  string
+	TaskID     string
+}
+
+type ListDependentsRow struct {
+	ID     string
+	Name   string
+	Status SitetrackTaskStatus
+	Steps  int32
+}
+
+func (q *Queries) ListDependents(ctx context.Context, arg ListDependentsParams) ([]ListDependentsRow, error) {
+	rows, err := q.db.Query(ctx, listDependents,
+		arg.AfterID,
+		arg.AfterSteps,
+		arg.PageSize,
+		arg.ProjectID,
+		arg.TaskID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListDependentsRow
+	for rows.Next() {
+		var i ListDependentsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Status,
+			&i.Steps,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRelationships = `-- name: ListRelationships :many
 WITH RECURSIVE paths(id,steps) AS (
-    SELECT CASE $4::text WHEN 'dependencies' THEN d.required_task_id ELSE d.dependent_task_id END AS id,1::integer AS steps
-    FROM sitetrack.task_dependencies d WHERE d.project_id=$5 AND
-      (($4::text='dependencies' AND d.dependent_task_id=$6) OR ($4::text='dependents' AND d.required_task_id=$6))
-    UNION
-    SELECT CASE $4::text WHEN 'dependencies' THEN d.required_task_id ELSE d.dependent_task_id END,p.steps+1
-    FROM paths p JOIN sitetrack.task_dependencies d ON
-      (($4::text='dependencies' AND d.dependent_task_id=p.id) OR ($4::text='dependents' AND d.required_task_id=p.id))
-    WHERE d.project_id=$5
+ SELECT d.required_task_id,1::integer FROM sitetrack.task_dependencies d
+ WHERE d.project_id=$4 AND d.dependent_task_id=$5
+ UNION
+ SELECT d.required_task_id,p.steps+1 FROM paths p
+ JOIN sitetrack.task_dependencies d ON d.dependent_task_id=p.id
+ WHERE d.project_id=$4
 ), distances AS (SELECT paths.id,min(paths.steps)::integer AS steps FROM paths GROUP BY paths.id)
 SELECT t.id,t.name,t.status,d.steps FROM distances d JOIN sitetrack.tasks t ON t.id=d.id
 WHERE ($1::text='' OR (d.steps,t.id)>($2::integer,$1))
@@ -103,7 +161,6 @@ type ListRelationshipsParams struct {
 	AfterID    string
 	AfterSteps int32
 	PageSize   int32
-	Direction  string
 	ProjectID  string
 	TaskID     string
 }
@@ -115,13 +172,11 @@ type ListRelationshipsRow struct {
 	Steps  int32
 }
 
-// We deduplicate node/depth pairs before calculating shortest distances.
 func (q *Queries) ListRelationships(ctx context.Context, arg ListRelationshipsParams) ([]ListRelationshipsRow, error) {
 	rows, err := q.db.Query(ctx, listRelationships,
 		arg.AfterID,
 		arg.AfterSteps,
 		arg.PageSize,
-		arg.Direction,
 		arg.ProjectID,
 		arg.TaskID,
 	)

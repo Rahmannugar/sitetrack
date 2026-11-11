@@ -13,12 +13,12 @@ import (
 )
 
 const listNotifications = `-- name: ListNotifications :many
-SELECT n.id,n.project_id,n.invitation_id,n.type,n.title,n.message,n.read_at,n.created_at,i.status AS invitation_status
+SELECT n.id,n.project_id,n.invitation_id,n.type,n.title,n.message,n.read_at,n.created_at,i.status AS invitation_status,i.expires_at AS invitation_expires_at
 FROM sitetrack.notifications n
 JOIN sitetrack.projects p ON p.id=n.project_id
 JOIN sitetrack.users u ON u.id=$1
 LEFT JOIN sitetrack.project_memberships m ON m.project_id=p.id AND m.user_id=u.id
-LEFT JOIN sitetrack.project_invitations i ON i.id=n.invitation_id
+LEFT JOIN sitetrack.invitation_states i ON i.id=n.invitation_id
 WHERE n.user_id=$1 AND p.deleted_at IS NULL AND (i.invitee_id=u.id OR m.user_id IS NOT NULL OR u.role='superadmin')
 AND ($2::timestamptz IS NULL OR (n.created_at,n.id)<($2,$3::uuid))
 ORDER BY n.created_at DESC,n.id DESC LIMIT $4
@@ -32,15 +32,16 @@ type ListNotificationsParams struct {
 }
 
 type ListNotificationsRow struct {
-	ID               uuid.UUID
-	ProjectID        string
-	InvitationID     uuid.NullUUID
-	Type             string
-	Title            string
-	Message          string
-	ReadAt           pgtype.Timestamptz
-	CreatedAt        pgtype.Timestamptz
-	InvitationStatus *SitetrackInvitationStatus
+	ID                  uuid.UUID
+	ProjectID           string
+	InvitationID        uuid.NullUUID
+	Type                string
+	Title               string
+	Message             string
+	ReadAt              pgtype.Timestamptz
+	CreatedAt           pgtype.Timestamptz
+	InvitationStatus    *SitetrackInvitationStatus
+	InvitationExpiresAt pgtype.Timestamptz
 }
 
 func (q *Queries) ListNotifications(ctx context.Context, arg ListNotificationsParams) ([]ListNotificationsRow, error) {
@@ -67,6 +68,7 @@ func (q *Queries) ListNotifications(ctx context.Context, arg ListNotificationsPa
 			&i.ReadAt,
 			&i.CreatedAt,
 			&i.InvitationStatus,
+			&i.InvitationExpiresAt,
 		); err != nil {
 			return nil, err
 		}
@@ -79,13 +81,13 @@ func (q *Queries) ListNotifications(ctx context.Context, arg ListNotificationsPa
 }
 
 const notificationChanges = `-- name: NotificationChanges :many
-SELECT c.revision,n.id,n.project_id,n.invitation_id,n.type,n.title,n.message,n.read_at,n.created_at,i.status AS invitation_status, (p.deleted_at IS NULL AND (i.invitee_id=u.id OR m.user_id IS NOT NULL OR u.role='superadmin'))::boolean AS visible
+SELECT c.revision,n.id,n.project_id,n.invitation_id,n.type,n.title,n.message,n.read_at,n.created_at,i.status AS invitation_status,i.expires_at AS invitation_expires_at, (p.deleted_at IS NULL AND (i.invitee_id=u.id OR m.user_id IS NOT NULL OR u.role='superadmin'))::boolean AS visible
 FROM sitetrack.notification_changes c
 JOIN sitetrack.notifications n ON n.id=c.notification_id
 JOIN sitetrack.projects p ON p.id=n.project_id
 JOIN sitetrack.users u ON u.id=$1
 LEFT JOIN sitetrack.project_memberships m ON m.project_id=p.id AND m.user_id=u.id
-LEFT JOIN sitetrack.project_invitations i ON i.id=n.invitation_id
+LEFT JOIN sitetrack.invitation_states i ON i.id=n.invitation_id
 WHERE c.user_id=$1 AND c.revision>$2
 ORDER BY c.revision LIMIT 20
 `
@@ -96,17 +98,18 @@ type NotificationChangesParams struct {
 }
 
 type NotificationChangesRow struct {
-	Revision         int64
-	ID               uuid.UUID
-	ProjectID        string
-	InvitationID     uuid.NullUUID
-	Type             string
-	Title            string
-	Message          string
-	ReadAt           pgtype.Timestamptz
-	CreatedAt        pgtype.Timestamptz
-	InvitationStatus *SitetrackInvitationStatus
-	Visible          bool
+	Revision            int64
+	ID                  uuid.UUID
+	ProjectID           string
+	InvitationID        uuid.NullUUID
+	Type                string
+	Title               string
+	Message             string
+	ReadAt              pgtype.Timestamptz
+	CreatedAt           pgtype.Timestamptz
+	InvitationStatus    *SitetrackInvitationStatus
+	InvitationExpiresAt pgtype.Timestamptz
+	Visible             bool
 }
 
 func (q *Queries) NotificationChanges(ctx context.Context, arg NotificationChangesParams) ([]NotificationChangesRow, error) {
@@ -129,6 +132,7 @@ func (q *Queries) NotificationChanges(ctx context.Context, arg NotificationChang
 			&i.ReadAt,
 			&i.CreatedAt,
 			&i.InvitationStatus,
+			&i.InvitationExpiresAt,
 			&i.Visible,
 		); err != nil {
 			return nil, err
@@ -148,7 +152,7 @@ FROM sitetrack.notifications n
 JOIN sitetrack.projects p ON p.id=n.project_id
 JOIN sitetrack.users u ON u.id=$1
 LEFT JOIN sitetrack.project_memberships m ON m.project_id=p.id AND m.user_id=u.id
-LEFT JOIN sitetrack.project_invitations i ON i.id=n.invitation_id
+LEFT JOIN sitetrack.invitation_states i ON i.id=n.invitation_id
 WHERE n.user_id=$1 AND n.read_at IS NULL AND p.deleted_at IS NULL AND (i.invitee_id=u.id OR m.user_id IS NOT NULL OR u.role='superadmin'))
 `
 
@@ -164,7 +168,7 @@ FROM sitetrack.notifications n
 JOIN sitetrack.projects p ON p.id=n.project_id
 JOIN sitetrack.users u ON u.id=$1
 LEFT JOIN sitetrack.project_memberships m ON m.project_id=p.id AND m.user_id=u.id
-LEFT JOIN sitetrack.project_invitations i ON i.id=n.invitation_id
+LEFT JOIN sitetrack.invitation_states i ON i.id=n.invitation_id
 WHERE n.id=$2 AND n.user_id=$1 AND p.deleted_at IS NULL AND (i.invitee_id=u.id OR m.user_id IS NOT NULL OR u.role='superadmin'))
 `
 
@@ -198,7 +202,7 @@ FROM sitetrack.notifications n
 JOIN sitetrack.projects p ON p.id=n.project_id
 JOIN sitetrack.users u ON u.id=$1
 LEFT JOIN sitetrack.project_memberships m ON m.project_id=p.id AND m.user_id=u.id
-LEFT JOIN sitetrack.project_invitations i ON i.id=n.invitation_id
+LEFT JOIN sitetrack.invitation_states i ON i.id=n.invitation_id
 WHERE n.user_id=$1 AND n.read_at IS NULL AND p.deleted_at IS NULL AND (i.invitee_id=u.id OR m.user_id IS NOT NULL OR u.role='superadmin')
 `
 

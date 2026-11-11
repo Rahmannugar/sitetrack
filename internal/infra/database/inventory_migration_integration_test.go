@@ -51,7 +51,7 @@ func TestCompanyInventoryMigrationPreservesStock(t *testing.T) {
 			return
 		}
 		for _, statement := range []string{
-			"DELETE FROM sitetrack.company_inventory WHERE material_id IN (SELECT id FROM sitetrack.materials WHERE category_id=$1)",
+			"DELETE FROM sitetrack.company_store WHERE material_id IN (SELECT id FROM sitetrack.materials WHERE category_id=$1)",
 			"DELETE FROM sitetrack.materials WHERE category_id=$1",
 			"DELETE FROM sitetrack.material_categories WHERE id=$1",
 		} {

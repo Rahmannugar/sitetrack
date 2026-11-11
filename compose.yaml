@@ -5,7 +5,7 @@ x-application: &application
   build:
     context: .
   environment: &application-environment
-    SITETRACK_DATABASE_URL: postgres://sitetrack:sitetrack@postgres:5432/sitetrack?sslmode=disable
+    SITETRACK_DATABASE_URL: postgres://sitetrack:sitetrack@postgres:5432/${SITETRACK_COMPOSE_DATABASE_NAME:-sitetrack}?sslmode=disable
 
 x-telemetry-environment: &telemetry-environment
   SITETRACK_TELEMETRY_ENABLED: ${SITETRACK_TELEMETRY_ENABLED:-false}
@@ -53,7 +53,7 @@ services:
       SITETRACK_RATE_LIMIT_ENABLED: ${SITETRACK_RATE_LIMIT_ENABLED:-true}
       SITETRACK_OTP_SECRET: ${SITETRACK_OTP_SECRET:-}
       SITETRACK_OUTBOX_ENCRYPTION_KEY: ${SITETRACK_OUTBOX_ENCRYPTION_KEY:-}
-      SITETRACK_JWT_SIGNING_SEED: ${SITETRACK_JWT_SIGNING_SEED:-}
+      SITETRACK_JWT_SIGNING_SECRET: ${SITETRACK_JWT_SIGNING_SECRET:-}
       SITETRACK_EMAIL_FROM: ${SITETRACK_EMAIL_FROM:-SiteTrack <onboarding@resend.dev>}
     ports:
       - "127.0.0.1:${SITETRACK_HTTP_PORT:-8080}:8080"

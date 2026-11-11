@@ -6,17 +6,17 @@ import (
 	"sitetrack/internal/infra/openapi"
 )
 
-var invitationExample = json.RawMessage(`{"id":"019f2aa0-7000-7000-8000-000000000003","project_id":"PRJ-0001","inviter_id":"019f2aa0-7000-7000-8000-000000000001","invitee_id":"019f2aa0-7000-7000-8000-000000000002","status":"pending","created_at":"2026-11-10T12:00:00Z","completed_at":null}`)
+var invitationExample = json.RawMessage(`{"id":"019f2aa0-7000-7000-8000-000000000003","project_id":"PRJ-0001","inviter_id":"019f2aa0-7000-7000-8000-000000000001","invitee_id":"019f2aa0-7000-7000-8000-000000000002","status":"pending","created_at":"2026-11-10T12:00:00Z","completed_at":null,"expires_at":"2026-11-17T12:00:00Z"}`)
 
 func invitationSchema() *jsonschema.Schema {
-	return &jsonschema.Schema{Type: "object", Required: []string{"id", "project_id", "inviter_id", "invitee_id", "status", "created_at", "completed_at"}, Properties: map[string]*jsonschema.Schema{
-		"id": {Type: "string", Format: "uuid"}, "project_id": {Type: "string"}, "inviter_id": {Type: "string", Format: "uuid"}, "invitee_id": {Type: "string", Format: "uuid"}, "status": {Type: "string", Pattern: "^(pending|accepted|rejected|withdrawn)$"}, "created_at": {Type: "string", Format: "date-time"}, "completed_at": {Types: []string{"string", "null"}, Format: "date-time"},
+	return &jsonschema.Schema{Type: "object", Required: []string{"id", "project_id", "inviter_id", "invitee_id", "status", "created_at", "completed_at", "expires_at"}, Properties: map[string]*jsonschema.Schema{
+		"id": {Type: "string", Format: "uuid"}, "project_id": {Type: "string"}, "inviter_id": {Type: "string", Format: "uuid"}, "invitee_id": {Type: "string", Format: "uuid"}, "status": {Type: "string", Pattern: "^(pending|accepted|rejected|withdrawn|expired)$"}, "created_at": {Type: "string", Format: "date-time"}, "expires_at": {Type: "string", Format: "date-time"}, "completed_at": {Types: []string{"string", "null"}, Format: "date-time"},
 	}}
 }
 func invitationContract(id, summary string, body, path *jsonschema.Schema, admin bool) openapi.Operation {
 	op := projectOperation(id, summary, body, path, admin)
 	op.Responses["404"] = response("Project, invitation or user not found.", errorSchema(), json.RawMessage(`{"error":"invitation not found"}`))
-	op.Responses["409"] = response("Only pending invitations can be answered or withdrawn; existing members and duplicate pending invitations are rejected.", errorSchema(), json.RawMessage(`{"error":"invitation is no longer pending or user already belongs to the project"}`))
+	op.Responses["409"] = response("Invitations expire after seven days. Only unexpired pending invitations can be answered or withdrawn; existing members and duplicate pending invitations are rejected.", errorSchema(), json.RawMessage(`{"error":"invitation is expired, no longer pending or user already belongs to the project"}`))
 	return op
 }
 func inviteContract(body, path *jsonschema.Schema) openapi.Operation {
@@ -33,11 +33,11 @@ func invitationsContract(query, path *jsonschema.Schema) openapi.Operation {
 }
 func withdrawContract(path *jsonschema.Schema) openapi.Operation {
 	op := invitationContract("withdrawProjectInvitation", "Withdraw a pending invitation", nil, path, true)
-	op.Responses["200"] = response("Invitation withdrawn.", invitationSchema(), json.RawMessage(`{"id":"019f2aa0-7000-7000-8000-000000000003","project_id":"PRJ-0001","inviter_id":"019f2aa0-7000-7000-8000-000000000001","invitee_id":"019f2aa0-7000-7000-8000-000000000002","status":"withdrawn","created_at":"2026-11-10T12:00:00Z","completed_at":"2026-11-10T12:01:00Z"}`))
+	op.Responses["200"] = response("Invitation withdrawn.", invitationSchema(), json.RawMessage(`{"id":"019f2aa0-7000-7000-8000-000000000003","project_id":"PRJ-0001","inviter_id":"019f2aa0-7000-7000-8000-000000000001","invitee_id":"019f2aa0-7000-7000-8000-000000000002","status":"withdrawn","created_at":"2026-11-10T12:00:00Z","completed_at":"2026-11-10T12:01:00Z","expires_at":"2026-11-17T12:00:00Z"}`))
 	return op
 }
 func respondContract(body, path *jsonschema.Schema) openapi.Operation {
 	op := invitationContract("respondToProjectInvitation", "Accept or reject your invitation", body, path, false)
-	op.Responses["200"] = response("Invitation answered. Accepting adds you as a project member.", invitationSchema(), json.RawMessage(`{"id":"019f2aa0-7000-7000-8000-000000000003","project_id":"PRJ-0001","inviter_id":"019f2aa0-7000-7000-8000-000000000001","invitee_id":"019f2aa0-7000-7000-8000-000000000002","status":"accepted","created_at":"2026-11-10T12:00:00Z","completed_at":"2026-11-10T12:01:00Z"}`))
+	op.Responses["200"] = response("Invitation answered. Accepting adds you as a project member.", invitationSchema(), json.RawMessage(`{"id":"019f2aa0-7000-7000-8000-000000000003","project_id":"PRJ-0001","inviter_id":"019f2aa0-7000-7000-8000-000000000001","invitee_id":"019f2aa0-7000-7000-8000-000000000002","status":"accepted","created_at":"2026-11-10T12:00:00Z","completed_at":"2026-11-10T12:01:00Z","expires_at":"2026-11-17T12:00:00Z"}`))
 	return op
 }

@@ -16,7 +16,7 @@ import (
 )
 
 func invitation(row projectdb.SitetrackProjectInvitation) Invitation {
-	result := Invitation{ID: row.ID, ProjectID: row.ProjectID, InviterID: row.InviterID, InviteeID: row.InviteeID, Status: string(row.Status), CreatedAt: row.CreatedAt.Time}
+	result := Invitation{ID: row.ID, ProjectID: row.ProjectID, InviterID: row.InviterID, InviteeID: row.InviteeID, Status: string(row.Status), CreatedAt: row.CreatedAt.Time, ExpiresAt: row.ExpiresAt.Time}
 	if row.CompletedAt.Valid {
 		result.CompletedAt = &row.CompletedAt.Time
 	}
@@ -43,6 +43,15 @@ func (s *Service) Invite(ctx context.Context, actor uuid.UUID, project string, t
 		return Invitation{}, ErrInvitationConflict
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return Invitation{}, err
+	}
+	expired, err := q.ExpireInviteeInvitations(ctx, projectdb.ExpireInviteeInvitationsParams{ProjectID: project, InviteeID: target})
+	if err != nil {
+		return Invitation{}, err
+	}
+	for _, expiredID := range expired {
+		if err := notifications.InvitationChanged(ctx, tx, expiredID); err != nil {
+			return Invitation{}, err
+		}
 	}
 	id, err := uuid.NewV7()
 	if err != nil {
@@ -73,6 +82,14 @@ func (s *Service) Withdraw(ctx context.Context, actor uuid.UUID, project string,
 		return Invitation{}, err
 	}
 	defer rollback(tx)
+	if expired, err := expireInvitation(ctx, tx, q, project, id); err != nil {
+		return Invitation{}, err
+	} else if expired {
+		if err := tx.Commit(ctx); err != nil {
+			return Invitation{}, err
+		}
+		return Invitation{}, ErrInvitationConflict
+	}
 	existing, err := q.GetInvitation(ctx, projectdb.GetInvitationParams{ID: id, ProjectID: project})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Invitation{}, ErrInvitationNotFound
@@ -84,6 +101,9 @@ func (s *Service) Withdraw(ctx context.Context, actor uuid.UUID, project string,
 		return Invitation{}, ErrInvitationConflict
 	}
 	row, err := q.FinishInvitation(ctx, projectdb.FinishInvitationParams{ID: id, ProjectID: project, Status: "withdrawn"})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Invitation{}, ErrInvitationConflict
+	}
 	if err != nil {
 		return Invitation{}, err
 	}
@@ -120,6 +140,14 @@ func (s *Service) Respond(ctx context.Context, actor, id uuid.UUID, action strin
 			return Invitation{}, ErrInvitationNotFound
 		}
 		return Invitation{}, err
+	}
+	if expired, err := expireInvitation(ctx, tx, q, project, id); err != nil {
+		return Invitation{}, err
+	} else if expired {
+		if err := tx.Commit(ctx); err != nil {
+			return Invitation{}, err
+		}
+		return Invitation{}, ErrInvitationConflict
 	}
 	status := "rejected"
 	if action == "accept" {
@@ -170,7 +198,7 @@ func (s *Service) Invitations(ctx context.Context, actor uuid.UUID, project stri
 		return InvitationPage{}, ErrInvalid
 	}
 	switch input.Status {
-	case "pending", "accepted", "rejected", "withdrawn", "all":
+	case "pending", "accepted", "rejected", "withdrawn", "expired", "all":
 	default:
 		return InvitationPage{}, ErrInvalid
 	}
@@ -199,7 +227,7 @@ func (s *Service) Invitations(ctx context.Context, actor uuid.UUID, project stri
 		rows = rows[:input.Limit]
 	}
 	for _, row := range rows {
-		page.Items = append(page.Items, invitation(row))
+		page.Items = append(page.Items, invitation(projectdb.SitetrackProjectInvitation(row)))
 	}
 	if more {
 		last := page.Items[len(page.Items)-1]
@@ -210,4 +238,18 @@ func (s *Service) Invitations(ctx context.Context, actor uuid.UUID, project stri
 		page.NextCursor = base64.RawURLEncoding.EncodeToString(raw)
 	}
 	return page, tx.Commit(ctx)
+}
+
+func expireInvitation(ctx context.Context, tx pgx.Tx, q *projectdb.Queries, project string, id uuid.UUID) (bool, error) {
+	expired, err := q.ExpireInvitation(ctx, projectdb.ExpireInvitationParams{ID: id, ProjectID: project})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if err := notifications.InvitationChanged(ctx, tx, expired); err != nil {
+		return false, err
+	}
+	return true, nil
 }

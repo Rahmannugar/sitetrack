@@ -1,5 +1,5 @@
 INSERT INTO sitetrack.notifications(id,event_id,user_id,project_id,invitation_id,type,title,message)
-SELECT uuidv7(),e.id,r.user_id,p.id,i.id,
+SELECT (lpad(to_hex(floor(extract(epoch FROM clock_timestamp())*1000)::bigint),12,'0') || '7' || substr(replace(gen_random_uuid()::text,'-',''),14,3) || substr(replace(gen_random_uuid()::text,'-',''),17,16))::uuid,e.id,r.user_id,p.id,i.id,
     content.payload->>'kind',content.payload->>'title',content.payload->>'message'
 FROM sitetrack.outbox_events e
 JOIN sitetrack.outbox_recipients r ON r.event_id=e.id AND r.delivered_at IS NULL
@@ -23,7 +23,7 @@ DELETE FROM sitetrack.outbox_events WHERE event_type='notification.project';
 DROP INDEX sitetrack.notifications_invitation_user_idx;
 ALTER TABLE sitetrack.notifications ADD COLUMN event_id uuid;
 ALTER TABLE sitetrack.notifications DISABLE TRIGGER notification_change;
-UPDATE sitetrack.notifications SET event_id=uuidv7();
+UPDATE sitetrack.notifications SET event_id=(lpad(to_hex(floor(extract(epoch FROM clock_timestamp())*1000)::bigint),12,'0') || '7' || substr(replace(gen_random_uuid()::text,'-',''),14,3) || substr(replace(gen_random_uuid()::text,'-',''),17,16))::uuid;
 ALTER TABLE sitetrack.notifications ENABLE TRIGGER notification_change;
 INSERT INTO sitetrack.outbox_events(id,aggregate_id,event_type,status,created_at,published_at)
 SELECT event_id,project_id,'notification.project','published',created_at,created_at FROM sitetrack.notifications;

@@ -27,41 +27,41 @@ SELECT * FROM sitetrack.deliveries WHERE id=$1 FOR UPDATE;
 SELECT id FROM sitetrack.materials WHERE id=ANY(sqlc.arg(material_ids)::uuid[]) AND deleted_at IS NULL ORDER BY id FOR UPDATE;
 
 -- name: EnsureCompanyInventory :exec
-INSERT INTO sitetrack.company_inventory(material_id) SELECT unnest(sqlc.arg(material_ids)::uuid[]) ON CONFLICT DO NOTHING;
+INSERT INTO sitetrack.company_store(material_id) SELECT unnest(sqlc.arg(material_ids)::uuid[]) ON CONFLICT DO NOTHING;
 
 -- name: EnsureProjectInventory :exec
-INSERT INTO sitetrack.project_inventory(project_id,material_id)
+INSERT INTO sitetrack.project_store(project_id,material_id)
 SELECT sqlc.arg(project_id),unnest(sqlc.arg(material_ids)::uuid[]) ON CONFLICT DO NOTHING;
 
 -- name: SendCompanyStock :execrows
-UPDATE sitetrack.company_inventory i SET quantity=i.quantity-line.amount::numeric,in_transit_to_projects=i.in_transit_to_projects+line.amount::numeric,updated_at=clock_timestamp()
+UPDATE sitetrack.company_store i SET quantity=i.quantity-line.amount::numeric,in_transit_to_projects=i.in_transit_to_projects+line.amount::numeric,updated_at=clock_timestamp()
 FROM (SELECT unnest(sqlc.arg(material_ids)::uuid[]) AS material_id,unnest(sqlc.arg(quantities)::text[]) AS amount) line
 WHERE i.material_id=line.material_id AND i.quantity>=line.amount::numeric;
 
 -- name: ReleaseCompanyStock :exec
-UPDATE sitetrack.company_inventory i SET quantity=i.quantity+CASE WHEN sqlc.arg(return_stock)::boolean THEN line.amount::numeric ELSE 0 END,
+UPDATE sitetrack.company_store i SET quantity=i.quantity+CASE WHEN sqlc.arg(return_stock)::boolean THEN line.amount::numeric ELSE 0 END,
 in_transit_to_projects=i.in_transit_to_projects-line.amount::numeric,updated_at=clock_timestamp()
 FROM (SELECT unnest(sqlc.arg(material_ids)::uuid[]) AS material_id,unnest(sqlc.arg(quantities)::text[]) AS amount) line
 WHERE i.material_id=line.material_id;
 
 -- name: ReceiveCompanyStock :exec
-UPDATE sitetrack.company_inventory i SET quantity=i.quantity+line.amount::numeric,updated_at=clock_timestamp()
+UPDATE sitetrack.company_store i SET quantity=i.quantity+line.amount::numeric,updated_at=clock_timestamp()
 FROM (SELECT unnest(sqlc.arg(material_ids)::uuid[]) AS material_id,unnest(sqlc.arg(quantities)::text[]) AS amount) line
 WHERE i.material_id=line.material_id;
 
 -- name: SendProjectStock :execrows
-UPDATE sitetrack.project_inventory i SET quantity=i.quantity-line.amount::numeric,in_transit=i.in_transit+line.amount::numeric,updated_at=clock_timestamp(),last_delivery_at=clock_timestamp()
+UPDATE sitetrack.project_store i SET quantity=i.quantity-line.amount::numeric,in_transit=i.in_transit+line.amount::numeric,updated_at=clock_timestamp(),last_delivery_at=clock_timestamp()
 FROM (SELECT unnest(sqlc.arg(material_ids)::uuid[]) AS material_id,unnest(sqlc.arg(quantities)::text[]) AS amount) line
 WHERE i.project_id=sqlc.arg(project_id) AND i.material_id=line.material_id AND i.quantity>=line.amount::numeric;
 
 -- name: ReleaseProjectStock :exec
-UPDATE sitetrack.project_inventory i SET quantity=i.quantity+CASE WHEN sqlc.arg(return_stock)::boolean THEN line.amount::numeric ELSE 0 END,
+UPDATE sitetrack.project_store i SET quantity=i.quantity+CASE WHEN sqlc.arg(return_stock)::boolean THEN line.amount::numeric ELSE 0 END,
 in_transit=i.in_transit-line.amount::numeric,updated_at=clock_timestamp(),last_delivery_at=CASE WHEN sqlc.arg(return_stock)::boolean THEN clock_timestamp() ELSE i.last_delivery_at END
 FROM (SELECT unnest(sqlc.arg(material_ids)::uuid[]) AS material_id,unnest(sqlc.arg(quantities)::text[]) AS amount) line
 WHERE i.project_id=sqlc.arg(project_id) AND i.material_id=line.material_id;
 
 -- name: ReceiveProjectStock :exec
-UPDATE sitetrack.project_inventory i SET quantity=i.quantity+line.amount::numeric,updated_at=clock_timestamp(),last_delivery_at=clock_timestamp()
+UPDATE sitetrack.project_store i SET quantity=i.quantity+line.amount::numeric,updated_at=clock_timestamp(),last_delivery_at=clock_timestamp()
 FROM (SELECT unnest(sqlc.arg(material_ids)::uuid[]) AS material_id,unnest(sqlc.arg(quantities)::text[]) AS amount) line
 WHERE i.project_id=sqlc.arg(project_id) AND i.material_id=line.material_id;
 

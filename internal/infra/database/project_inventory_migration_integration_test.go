@@ -65,7 +65,7 @@ func TestProjectInventoryMigrationPreservesStockAndDeliveries(t *testing.T) {
 		for _, sql := range []string{
 			"DELETE FROM sitetrack.delivery_items WHERE delivery_id IN (SELECT id FROM sitetrack.deliveries WHERE project_id=ANY($1))",
 			"DELETE FROM sitetrack.deliveries WHERE project_id=ANY($1)",
-			"DELETE FROM sitetrack.project_inventory WHERE project_id=ANY($1)",
+			"DELETE FROM sitetrack.project_store WHERE project_id=ANY($1)",
 			"UPDATE sitetrack.projects SET deleted_at=now() WHERE id=ANY($1)",
 			"DELETE FROM sitetrack.project_memberships WHERE project_id=ANY($1)",
 			"DELETE FROM sitetrack.projects WHERE id=ANY($1)",
@@ -75,7 +75,7 @@ func TestProjectInventoryMigrationPreservesStockAndDeliveries(t *testing.T) {
 				return
 			}
 		}
-		for _, sql := range []string{"DELETE FROM sitetrack.company_inventory WHERE material_id=ANY($1)", "DELETE FROM sitetrack.materials WHERE id=ANY($1)"} {
+		for _, sql := range []string{"DELETE FROM sitetrack.company_store WHERE material_id=ANY($1)", "DELETE FROM sitetrack.materials WHERE id=ANY($1)"} {
 			if _, err := tx.Exec(cleanup, sql, materials); err != nil {
 				t.Error(err)
 				return

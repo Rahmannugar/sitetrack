@@ -13,7 +13,7 @@ type Authentication struct {
 	OutboxKey []byte
 	EmailFrom string
 	ResendKey string
-	JWTSeed   []byte
+	JWTSecret []byte
 }
 
 func loadAuthentication(k *koanf.Koanf) (Authentication, error) {
@@ -30,7 +30,7 @@ func loadAuthentication(k *koanf.Koanf) (Authentication, error) {
 	}{
 		{"otp_secret", &cfg.OTPSecret},
 		{"outbox_encryption_key", &cfg.OutboxKey},
-		{"jwt_signing_seed", &cfg.JWTSeed},
+		{"jwt_signing_secret", &cfg.JWTSecret},
 	} {
 		if raw := k.String(setting.key); raw != "" {
 			value, err := hex.DecodeString(raw)

@@ -18,6 +18,7 @@ type ListInput struct {
 type Invitation struct {
 	ID         uuid.UUID `json:"id"`
 	Status     string    `json:"status"`
+	ExpiresAt  time.Time `json:"expires_at"`
 	CanRespond bool      `json:"can_respond"`
 }
 type Notification struct {

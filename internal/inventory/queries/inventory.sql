@@ -15,12 +15,12 @@ WHERE p.id=sqlc.arg(project_id) AND p.deleted_at IS NULL AND (u.role='superadmin
 SELECT id FROM sitetrack.materials WHERE id=$1 AND deleted_at IS NULL FOR UPDATE;
 
 -- name: AddStock :exec
-INSERT INTO sitetrack.company_inventory(material_id,quantity)
+INSERT INTO sitetrack.company_store(material_id,quantity)
 VALUES(sqlc.arg(material_id),sqlc.arg(quantity)::text::numeric)
-ON CONFLICT(material_id) DO UPDATE SET quantity=company_inventory.quantity+EXCLUDED.quantity,updated_at=clock_timestamp();
+ON CONFLICT(material_id) DO UPDATE SET quantity=company_store.quantity+EXCLUDED.quantity,updated_at=clock_timestamp();
 
 -- name: SetReorderPoint :exec
-INSERT INTO sitetrack.company_inventory(material_id,reorder_point)
+INSERT INTO sitetrack.company_store(material_id,reorder_point)
 VALUES(sqlc.arg(material_id),sqlc.arg(reorder_point)::text::numeric)
 ON CONFLICT(material_id) DO UPDATE SET reorder_point=EXCLUDED.reorder_point,updated_at=clock_timestamp();
 

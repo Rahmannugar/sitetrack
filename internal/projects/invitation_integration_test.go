@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"sitetrack/internal/notifications"
@@ -252,6 +253,62 @@ func TestConcurrentNotificationCreationAndReads(t *testing.T) {
 			if err != nil {
 				t.Fatal("concurrent notification operation failed", err)
 			}
+		}
+	}
+}
+
+func TestInvitationExpiryAndReinvite(t *testing.T) {
+	f := projectTest(t)
+	ctx := context.Background()
+	feed := notificationFlow(t, f)
+	p := f.create(t, "Expiry Site")
+	for _, target := range []int{1, 2} {
+		invite, err := f.s.Invite(ctx, f.users[0], p.ID, f.users[target])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if invite.ExpiresAt.Sub(invite.CreatedAt) != 7*24*time.Hour {
+			t.Fatal("invitation lifetime is not seven days")
+		}
+		created := time.Now().UTC().Add(-8 * 24 * time.Hour).Truncate(time.Microsecond)
+		if _, err := f.s.pool.Exec(ctx, "UPDATE sitetrack.project_invitations SET created_at=$2,expires_at=$3 WHERE id=$1", invite.ID, created, created.Add(7*24*time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+		pending, err := f.s.Invitations(ctx, f.users[0], p.ID, InvitationListInput{Status: "pending", Limit: 20})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, row := range pending.Items {
+			if row.ID == invite.ID {
+				t.Fatal("expired invitation remained pending")
+			}
+		}
+		history, err := f.s.Invitations(ctx, f.users[0], p.ID, InvitationListInput{Status: "expired", Limit: 20})
+		if err != nil || len(history.Items) == 0 {
+			t.Fatalf("expired invitation missing: %v", err)
+		}
+		page, err := feed.List(ctx, f.users[target], notifications.ListInput{Limit: 20})
+		if err != nil || len(page.Items) != 1 || page.Items[0].Invitation.Status != "expired" || page.Items[0].Invitation.CanRespond {
+			t.Fatalf("expired notification remains actionable: %v", err)
+		}
+		if target == 1 {
+			if _, err := f.s.Respond(ctx, f.users[target], invite.ID, "accept"); !errors.Is(err, ErrInvitationConflict) {
+				t.Fatalf("expired invitation accepted: %v", err)
+			}
+			if _, err := f.s.Get(ctx, f.users[target], p.ID); !errors.Is(err, ErrNotFound) {
+				t.Fatal("expired invitation granted access")
+			}
+		}
+		replacement, err := f.s.Invite(ctx, f.users[0], p.ID, f.users[target])
+		if err != nil || replacement.ID == invite.ID || replacement.Status != "pending" {
+			t.Fatalf("expired invitation blocked reinvite: %v", err)
+		}
+		if _, err := f.s.Respond(ctx, f.users[target], invite.ID, "reject"); !errors.Is(err, ErrInvitationConflict) {
+			t.Fatal("old invitation remained usable")
+		}
+		accepted, err := f.s.Respond(ctx, f.users[target], replacement.ID, "accept")
+		if err != nil || accepted.Status != "accepted" {
+			t.Fatalf("replacement could not be accepted: %v", err)
 		}
 	}
 }

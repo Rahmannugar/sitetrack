@@ -93,7 +93,7 @@ Report whether the API process is serving requests.
 
 ## Invitations
 
-Invite a registered user to a project.
+Invite a registered user to a project for seven days.
 `POST /projects/:id/invitations`
 
 List project invitations.
@@ -105,7 +105,7 @@ Filter and paginate project invitations.
 Withdraw a pending invitation.
 `DELETE /projects/:id/invitations/:invitation_id`
 
-Accept or reject your invitation.
+Accept or reject your unexpired invitation.
 `POST /invitations/:invitation_id/respond`
 
 ## Materials

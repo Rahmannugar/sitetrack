@@ -40,7 +40,7 @@ CREATE TABLE sitetrack.project_stores (
 );
 -- We recreate obsolete store identities only when restoring the previous schema.
 INSERT INTO sitetrack.project_stores(id,project_id,name)
-SELECT uuidv7(),id,name || ' store' FROM sitetrack.projects;
+SELECT (lpad(to_hex(floor(extract(epoch FROM clock_timestamp())*1000)::bigint),12,'0') || '7' || substr(replace(gen_random_uuid()::text,'-',''),14,3) || substr(replace(gen_random_uuid()::text,'-',''),17,16))::uuid,id,name || ' store' FROM sitetrack.projects;
 ALTER TABLE sitetrack.project_inventory ADD COLUMN project_store_id uuid REFERENCES sitetrack.project_stores(id);
 UPDATE sitetrack.project_inventory i SET project_store_id=s.id
 FROM sitetrack.project_stores s WHERE s.project_id=i.project_id;

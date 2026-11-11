@@ -6,11 +6,11 @@ import (
 	"sitetrack/internal/infra/openapi"
 )
 
-var example = json.RawMessage(`{"id":"019f2aa0-7000-7000-8000-000000000004","project_id":"PRJ-0001","type":"project.invitation","title":"Project invitation","message":"You have been invited to PRJ-0001.","read_at":null,"created_at":"2026-11-10T12:00:00Z","invitation":{"id":"019f2aa0-7000-7000-8000-000000000003","status":"pending","can_respond":true}}`)
+var example = json.RawMessage(`{"id":"019f2aa0-7000-7000-8000-000000000004","project_id":"PRJ-0001","type":"project.invitation","title":"Project invitation","message":"You have been invited to PRJ-0001.","read_at":null,"created_at":"2026-11-10T12:00:00Z","invitation":{"id":"019f2aa0-7000-7000-8000-000000000003","status":"pending","expires_at":"2026-11-17T12:00:00Z","can_respond":true}}`)
 
 func schema() *jsonschema.Schema {
 	return &jsonschema.Schema{Type: "object", Required: []string{"id", "project_id", "type", "title", "message", "read_at", "created_at"}, Properties: map[string]*jsonschema.Schema{
-		"id": {Type: "string", Format: "uuid"}, "project_id": {Type: "string"}, "type": {Type: "string"}, "title": {Type: "string"}, "message": {Type: "string"}, "read_at": {Types: []string{"string", "null"}, Format: "date-time"}, "created_at": {Type: "string", Format: "date-time"}, "invitation": {Type: "object", Required: []string{"id", "status", "can_respond"}, Properties: map[string]*jsonschema.Schema{"id": {Type: "string", Format: "uuid"}, "status": {Type: "string", Pattern: "^(pending|accepted|rejected|withdrawn)$"}, "can_respond": {Type: "boolean"}}},
+		"id": {Type: "string", Format: "uuid"}, "project_id": {Type: "string"}, "type": {Type: "string"}, "title": {Type: "string"}, "message": {Type: "string"}, "read_at": {Types: []string{"string", "null"}, Format: "date-time"}, "created_at": {Type: "string", Format: "date-time"}, "invitation": {Type: "object", Required: []string{"id", "status", "expires_at", "can_respond"}, Properties: map[string]*jsonschema.Schema{"id": {Type: "string", Format: "uuid"}, "status": {Type: "string", Pattern: "^(pending|accepted|rejected|withdrawn|expired)$"}, "expires_at": {Type: "string", Format: "date-time"}, "can_respond": {Type: "boolean"}}},
 	}}
 }
 func response(description string, schema *jsonschema.Schema, value json.RawMessage) openapi.Response {

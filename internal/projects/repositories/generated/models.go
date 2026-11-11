@@ -19,6 +19,7 @@ const (
 	SitetrackInvitationStatusAccepted  SitetrackInvitationStatus = "accepted"
 	SitetrackInvitationStatusRejected  SitetrackInvitationStatus = "rejected"
 	SitetrackInvitationStatusWithdrawn SitetrackInvitationStatus = "withdrawn"
+	SitetrackInvitationStatusExpired   SitetrackInvitationStatus = "expired"
 )
 
 func (e *SitetrackInvitationStatus) Scan(src interface{}) error {
@@ -56,6 +57,17 @@ func (ns NullSitetrackInvitationStatus) Value() (driver.Value, error) {
 	return string(ns.SitetrackInvitationStatus), nil
 }
 
+type SitetrackInvitationState struct {
+	ID          uuid.UUID
+	ProjectID   string
+	InviterID   uuid.UUID
+	InviteeID   uuid.UUID
+	Status      SitetrackInvitationStatus
+	CreatedAt   pgtype.Timestamptz
+	CompletedAt pgtype.Timestamptz
+	ExpiresAt   pgtype.Timestamptz
+}
+
 type SitetrackProject struct {
 	ID         string
 	Name       string
@@ -74,4 +86,5 @@ type SitetrackProjectInvitation struct {
 	Status      SitetrackInvitationStatus
 	CreatedAt   pgtype.Timestamptz
 	CompletedAt pgtype.Timestamptz
+	ExpiresAt   pgtype.Timestamptz
 }

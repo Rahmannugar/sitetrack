@@ -16,6 +16,7 @@ const (
 	SitetrackInvitationStatusAccepted  SitetrackInvitationStatus = "accepted"
 	SitetrackInvitationStatusRejected  SitetrackInvitationStatus = "rejected"
 	SitetrackInvitationStatusWithdrawn SitetrackInvitationStatus = "withdrawn"
+	SitetrackInvitationStatusExpired   SitetrackInvitationStatus = "expired"
 )
 
 func (e *SitetrackInvitationStatus) Scan(src interface{}) error {
