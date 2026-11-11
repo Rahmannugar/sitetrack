@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"sitetrack/internal/authentication"
+	"sitetrack/internal/deliveries"
 	"sitetrack/internal/health"
 	"sitetrack/internal/infra/httpserver"
 	"sitetrack/internal/infra/openapi"
@@ -18,7 +19,7 @@ import (
 	"sitetrack/internal/tasks"
 )
 
-func newRouter(database health.Database, monitoring *telemetry.Runtime, accounts authentication.Accounts, projectService *projects.Service, notificationService *notifications.Service, taskService *tasks.Service, catalogue *materials.Service, stock *inventory.Service, rateLimitEnabled bool) (*gin.Engine, error) {
+func newRouter(database health.Database, monitoring *telemetry.Runtime, accounts authentication.Accounts, projectService *projects.Service, notificationService *notifications.Service, taskService *tasks.Service, catalogue *materials.Service, stock *inventory.Service, deliveryService *deliveries.Service, rateLimitEnabled bool) (*gin.Engine, error) {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 	if err := router.SetTrustedProxies(nil); err != nil {
@@ -50,6 +51,9 @@ func newRouter(database health.Database, monitoring *telemetry.Runtime, accounts
 		return nil, err
 	}
 	if err := inventory.Register(requests, stock, accounts, contracts, rateLimitEnabled, monitoring.Logger); err != nil {
+		return nil, err
+	}
+	if err := deliveries.Register(requests, deliveryService, accounts, contracts, rateLimitEnabled, monitoring.Logger); err != nil {
 		return nil, err
 	}
 	if err := contracts.RegisterDocs(requests); err != nil {

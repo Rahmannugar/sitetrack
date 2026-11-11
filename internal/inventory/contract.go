@@ -38,7 +38,7 @@ func errorContract(message string) openapi.Response {
 	return response(message, &jsonschema.Schema{Type: "object", Required: []string{"error"}, Properties: map[string]*jsonschema.Schema{"error": {Type: "string"}}}, raw)
 }
 func operation(id, summary string, body, path, query *jsonschema.Schema, company bool) openapi.Operation {
-	op := openapi.Operation{OperationID: id, Summary: summary, Tags: []string{"Inventory"}, Security: []map[string][]string{{"bearerAuth": {}}}, Responses: map[string]openapi.Response{}}
+	op := openapi.Operation{OperationID: id, Summary: summary, Tags: []string{"Stores"}, Security: []map[string][]string{{"bearerAuth": {}}}, Responses: map[string]openapi.Response{}}
 	for _, entry := range []struct{ status, message string }{{"400", ErrInvalid.Error()}, {"401", "authentication required"}, {"404", ErrNotFound.Error()}, {"429", "rate limit exceeded"}, {"500", "internal server error"}, {"504", "request timed out"}} {
 		op.Responses[entry.status] = errorContract(entry.message)
 	}

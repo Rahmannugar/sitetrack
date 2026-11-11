@@ -3,9 +3,6 @@ package inventory
 import (
 	"context"
 	"errors"
-	"fmt"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -16,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
+	stockquantity "sitetrack/internal/infra/quantity"
 	"sitetrack/internal/infra/telemetry"
 	stockdb "sitetrack/internal/inventory/repositories/generated"
 )
@@ -43,7 +41,7 @@ func failure(err error) error {
 		return ErrNotFound
 	}
 	var problem *pgconn.PgError
-	if errors.As(err, &problem) && problem.Code == "22003" {
+	if errors.As(err, &problem) && (problem.Code == "22003" || problem.ConstraintName == "company_inventory_capacity") {
 		return ErrConflict
 	}
 	return err
@@ -55,28 +53,11 @@ func rollback(tx pgx.Tx) {
 }
 
 func quantity(value string, positive bool) (string, error) {
-	parts := strings.Split(value, ".")
-	if len(parts) > 2 || len(parts[0]) < 1 || len(parts[0]) > 15 || (len(parts[0]) > 1 && parts[0][0] == '0') {
+	normalized, err := stockquantity.Normalize(value, positive)
+	if err != nil {
 		return "", ErrInvalid
 	}
-	fraction := ""
-	if len(parts) == 2 {
-		fraction = parts[1]
-		if len(fraction) < 1 || len(fraction) > 3 {
-			return "", ErrInvalid
-		}
-	}
-	for _, digit := range parts[0] + fraction {
-		if digit < '0' || digit > '9' {
-			return "", ErrInvalid
-		}
-	}
-	fraction += strings.Repeat("0", 3-len(fraction))
-	milli, err := strconv.ParseInt(parts[0]+fraction, 10, 64)
-	if err != nil || (positive && milli == 0) {
-		return "", ErrInvalid
-	}
-	return fmt.Sprintf("%d.%03d", milli/1000, milli%1000), nil
+	return normalized, nil
 }
 func (s *Service) companyAccess(ctx context.Context, actor uuid.UUID) error {
 	allowed, err := stockdb.New(s.pool).CompanyAccess(ctx, actor)

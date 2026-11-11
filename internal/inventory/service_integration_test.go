@@ -497,6 +497,8 @@ func TestInventoryHTTPPermissionsContractsAndTelemetry(t *testing.T) {
 		}
 		return response
 	}
+	call("GET", "/company-inventory", tokens[1], "", 404)
+	call("GET", "/projects/"+p.ID+"/inventory", tokens[0], "", 404)
 	base := "/company-store/" + item.ID.String()
 	for _, path := range []string{"/company-store", base} {
 		call("GET", path, "", "", 401)
@@ -545,7 +547,7 @@ func TestInventoryHTTPPermissionsContractsAndTelemetry(t *testing.T) {
 	if len(document.Paths) != 6 {
 		t.Fatal("missing inventory routes", len(document.Paths))
 	}
-	if strings.Contains(string(raw), "can_manage") || strings.Contains(string(raw), "/inventory") {
+	if strings.Contains(string(raw), "can_manage") || strings.Contains(string(raw), "/company-inventory") || strings.Contains(string(raw), "/inventory") {
 		t.Fatal("obsolete store contract remains")
 	}
 	if strings.Contains(response.Body.String(), "store_id") || strings.Contains(response.Body.String(), "can_manage") {

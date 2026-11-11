@@ -13,6 +13,7 @@ import (
 
 	"sitetrack/internal/authentication"
 	"sitetrack/internal/config"
+	"sitetrack/internal/deliveries"
 	"sitetrack/internal/infra/database"
 	"sitetrack/internal/infra/telemetry"
 	"sitetrack/internal/inventory"
@@ -78,7 +79,11 @@ func run(ctx context.Context, logger *slog.Logger) (resultErr error) {
 	if err != nil {
 		return err
 	}
-	router, err := newRouter(pool, monitoring, accounts, projects.NewService(pool), notificationService, tasks.NewService(pool), catalogue, stock, cfg.RateLimit.Enabled)
+	deliveryService, err := deliveries.NewService(pool, monitoring)
+	if err != nil {
+		return err
+	}
+	router, err := newRouter(pool, monitoring, accounts, projects.NewService(pool), notificationService, tasks.NewService(pool), catalogue, stock, deliveryService, cfg.RateLimit.Enabled)
 	if err != nil {
 		return err
 	}

@@ -27,13 +27,22 @@ type Contract[T any] struct {
 func NewBody[T any]() (*Contract[T], error) { return NewContract[T]() }
 
 func NewContract[T any]() (*Contract[T], error) {
-	schema, err := jsonschema.For[T](nil)
+	schema, err := requestSchema(reflect.TypeFor[T]())
 	if err != nil {
 		return nil, err
 	}
-	typeOf := reflect.TypeFor[T]()
+	v := validator.New()
+	v.SetTagName("binding")
+	return &Contract[T]{Schema: schema, validator: v}, nil
+}
+
+func requestSchema(typeOf reflect.Type) (*jsonschema.Schema, error) {
 	if typeOf.Kind() != reflect.Struct {
 		return nil, errors.New("request DTO must be a struct")
+	}
+	schema, err := jsonschema.ForType(typeOf, nil)
+	if err != nil {
+		return nil, err
 	}
 	schema.Required = nil
 	for i := range typeOf.NumField() {
@@ -87,6 +96,13 @@ func NewContract[T any]() (*Contract[T], error) {
 					if key == "max" || key == "len" {
 						property.MaxLength = &count
 					}
+				} else if field.Type.Kind() == reflect.Slice {
+					if key == "min" || key == "len" {
+						property.MinItems = &count
+					}
+					if key == "max" || key == "len" {
+						property.MaxItems = &count
+					}
 				} else {
 					return nil, errors.New("unsupported request length rule")
 				}
@@ -108,15 +124,19 @@ func NewContract[T any]() (*Contract[T], error) {
 					values[i] = regexp.QuoteMeta(values[i])
 				}
 				property.Pattern = "^(" + strings.Join(values, "|") + ")$"
-			case "", "omitempty":
+			case "", "omitempty", "dive":
 			default:
 				return nil, errors.New("unsupported request validation rule: " + key)
 			}
 		}
+		if field.Type.Kind() == reflect.Slice && field.Type.Elem().Kind() == reflect.Struct {
+			property.Items, err = requestSchema(field.Type.Elem())
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
-	v := validator.New()
-	v.SetTagName("binding")
-	return &Contract[T]{Schema: schema, validator: v}, nil
+	return schema, nil
 }
 
 func (b *Contract[T]) Decode(c *gin.Context) (T, error) {

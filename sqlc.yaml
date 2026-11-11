@@ -147,3 +147,24 @@ sql:
             go_type:
               import: github.com/google/uuid
               type: NullUUID
+  - name: deliveries
+    engine: postgresql
+    schema: internal/infra/database/migrations
+    queries: internal/deliveries/queries
+    gen:
+      go:
+        package: deliveriesdb
+        out: internal/deliveries/repositories/generated
+        sql_package: pgx/v5
+        emit_pointers_for_null_types: true
+        omit_unused_structs: true
+        overrides:
+          - db_type: uuid
+            go_type:
+              import: github.com/google/uuid
+              type: UUID
+          - db_type: uuid
+            nullable: true
+            go_type:
+              import: github.com/google/uuid
+              type: NullUUID
