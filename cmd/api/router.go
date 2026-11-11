@@ -11,13 +11,14 @@ import (
 	"sitetrack/internal/infra/httpserver"
 	"sitetrack/internal/infra/openapi"
 	"sitetrack/internal/infra/telemetry"
+	"sitetrack/internal/inventory"
 	"sitetrack/internal/materials"
 	"sitetrack/internal/notifications"
 	"sitetrack/internal/projects"
 	"sitetrack/internal/tasks"
 )
 
-func newRouter(database health.Database, monitoring *telemetry.Runtime, accounts authentication.Accounts, projectService *projects.Service, notificationService *notifications.Service, taskService *tasks.Service, catalogue *materials.Service, rateLimitEnabled bool) (*gin.Engine, error) {
+func newRouter(database health.Database, monitoring *telemetry.Runtime, accounts authentication.Accounts, projectService *projects.Service, notificationService *notifications.Service, taskService *tasks.Service, catalogue *materials.Service, stock *inventory.Service, rateLimitEnabled bool) (*gin.Engine, error) {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 	if err := router.SetTrustedProxies(nil); err != nil {
@@ -46,6 +47,9 @@ func newRouter(database health.Database, monitoring *telemetry.Runtime, accounts
 		return nil, err
 	}
 	if err := materials.Register(requests, catalogue, accounts, contracts, rateLimitEnabled, monitoring.Logger); err != nil {
+		return nil, err
+	}
+	if err := inventory.Register(requests, stock, accounts, contracts, rateLimitEnabled, monitoring.Logger); err != nil {
 		return nil, err
 	}
 	if err := contracts.RegisterDocs(requests); err != nil {

@@ -43,8 +43,18 @@ func failure(err error) error {
 		return ErrNotFound
 	}
 	var problem *pgconn.PgError
-	if errors.As(err, &problem) && problem.Code == "23505" {
-		return fmt.Errorf("%w: name already in use", ErrConflict)
+	if errors.As(err, &problem) {
+		if problem.Code == "23505" {
+			return fmt.Errorf("%w: name already in use", ErrConflict)
+		}
+		if problem.Code == "23514" {
+			switch problem.ConstraintName {
+			case "material_unit_in_use":
+				return fmt.Errorf("%w: unit cannot change after inventory records exist", ErrConflict)
+			case "material_stock":
+				return fmt.Errorf("%w: material still has stock or goods in transit", ErrConflict)
+			}
+		}
 	}
 	return err
 }
@@ -253,7 +263,7 @@ func (s *Service) Remove(ctx context.Context, actor, id uuid.UUID) (resultErr er
 	}
 	count, err := cataloguedb.New(s.pool).RemoveMaterial(ctx, id)
 	if err != nil {
-		return err
+		return failure(err)
 	}
 	if count == 0 {
 		return ErrNotFound

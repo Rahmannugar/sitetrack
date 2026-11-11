@@ -8,6 +8,7 @@ import (
 )
 
 var (
+	ErrStock     = errors.New("project store still has stock or goods in transit")
 	ErrNotFound  = errors.New("project or member not found")
 	ErrForbidden = errors.New("project admin required")
 	ErrLastAdmin = errors.New("project must retain at least one admin")

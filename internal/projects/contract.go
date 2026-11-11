@@ -72,6 +72,7 @@ func updateContract(body, path *jsonschema.Schema) openapi.Operation {
 func removeContract(path *jsonschema.Schema) openapi.Operation {
 	op := projectOperation("removeProject", "Remove a project", nil, path, true)
 	op.Responses["204"] = openapi.Response{Description: "Project removed. Its code is never reused."}
+	op.Responses["409"] = response(ErrStock.Error(), errorSchema(), json.RawMessage(`{"error":"project store still has stock or goods in transit"}`))
 	return op
 }
 func pageSchema(item *jsonschema.Schema) *jsonschema.Schema {

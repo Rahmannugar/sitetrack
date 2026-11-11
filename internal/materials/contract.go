@@ -67,6 +67,10 @@ func resourceContract(id, summary string, body, path *jsonschema.Schema, categor
 	if create {
 		status, description = "201", "Created. Company store managers and SuperAdmins can create catalogue entries."
 	}
+	if id == "updateMaterial" {
+		description = "Material updated. Its unit cannot change after inventory records exist."
+		op.Responses["409"] = errorContract(ErrConflict.Error() + ": unit cannot change after inventory records exist")
+	}
 	op.Responses[status] = response(description, schema, example)
 	return op
 }
@@ -82,7 +86,7 @@ func listingContract(id, summary string, query *jsonschema.Schema, categories bo
 }
 func removalContract(id, summary string, path *jsonschema.Schema, categories bool) openapi.Operation {
 	op := catalogueContract(id, summary, nil, path, nil, true)
-	delete(op.Responses, "409")
+	op.Responses["409"] = errorContract(ErrConflict.Error() + ": material still has stock or goods in transit")
 	description := "Material removed from the catalogue. Its record is retained."
 	if categories {
 		description = "Category removed. Its record is retained."

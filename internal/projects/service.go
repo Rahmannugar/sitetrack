@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"sitetrack/internal/notifications"
@@ -163,6 +164,10 @@ func (s *Service) Remove(ctx context.Context, actor uuid.UUID, id string) error 
 		return err
 	}
 	if err = q.RemoveProject(ctx, id); err != nil {
+		var problem *pgconn.PgError
+		if errors.As(err, &problem) && problem.ConstraintName == "project_stock" {
+			return ErrStock
+		}
 		return err
 	}
 	return tx.Commit(ctx)
