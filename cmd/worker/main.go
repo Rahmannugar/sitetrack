@@ -47,7 +47,7 @@ func run(ctx context.Context, bootstrap *slog.Logger) error {
 		}
 	}()
 	startup, cancel := context.WithTimeout(ctx, 10*time.Second)
-	pool, err := database.Open(startup, cfg.DatabaseURL, cfg.DatabasePools.Worker)
+	pool, err := database.Open(startup, cfg.DatabaseURL, cfg.DatabasePools.Worker, database.WithTracer(monitoring.PostgresTracer()))
 	cancel()
 	if err != nil {
 		return err

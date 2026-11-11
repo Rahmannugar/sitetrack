@@ -93,6 +93,38 @@ Remove a task dependency as a project admin.
 List all tasks this task depends on, or tasks depending on it.
 `GET /projects/:id/tasks/:task_id/relationships`
 
+## Materials
+
+Create a material as a company store manager or SuperAdmin.
+`POST /materials`
+
+List materials.
+`GET /materials`
+
+View a material.
+`GET /materials/:id`
+
+Update a material as a company store manager or SuperAdmin.
+`PUT /materials/:id`
+
+Remove a material as a company store manager or SuperAdmin.
+`DELETE /materials/:id`
+
+Create a material category as a company store manager or SuperAdmin.
+`POST /material-categories`
+
+List material categories.
+`GET /material-categories`
+
+View a material category.
+`GET /material-categories/:id`
+
+Update a material category as a company store manager or SuperAdmin.
+`PUT /material-categories/:id`
+
+Remove a material category as a company store manager or SuperAdmin.
+`DELETE /material-categories/:id`
+
 ## Invitations
 
 Invite a registered user to a project.

@@ -15,6 +15,7 @@ import (
 	"sitetrack/internal/config"
 	"sitetrack/internal/infra/database"
 	"sitetrack/internal/infra/telemetry"
+	"sitetrack/internal/materials"
 	"sitetrack/internal/notifications"
 	"sitetrack/internal/projects"
 	"sitetrack/internal/tasks"
@@ -52,7 +53,7 @@ func run(ctx context.Context, logger *slog.Logger) (resultErr error) {
 		}
 	}()
 	startup, cancel := context.WithTimeout(ctx, 10*time.Second)
-	pool, err := database.Open(startup, cfg.DatabaseURL, cfg.DatabasePools.API)
+	pool, err := database.Open(startup, cfg.DatabaseURL, cfg.DatabasePools.API, database.WithTracer(monitoring.PostgresTracer()))
 	cancel()
 	if err != nil {
 		return err
@@ -68,7 +69,11 @@ func run(ctx context.Context, logger *slog.Logger) (resultErr error) {
 	notificationDone := make(chan struct{})
 	go func() { defer close(notificationDone); notificationService.Run() }()
 	defer func() { cancelRuntime(); <-notificationDone }()
-	router, err := newRouter(pool, monitoring, accounts, projects.NewService(pool), notificationService, tasks.NewService(pool), cfg.RateLimit.Enabled)
+	catalogue, err := materials.NewService(pool, monitoring)
+	if err != nil {
+		return err
+	}
+	router, err := newRouter(pool, monitoring, accounts, projects.NewService(pool), notificationService, tasks.NewService(pool), catalogue, cfg.RateLimit.Enabled)
 	if err != nil {
 		return err
 	}
