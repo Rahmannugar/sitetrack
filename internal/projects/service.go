@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -75,7 +77,7 @@ func (s *Service) Create(ctx context.Context, actor uuid.UUID, input Input) (Pro
 }
 
 func project(row projectdb.GetProjectRow) Project {
-	return Project{ID: row.ID, Name: row.Name, StartDate: row.StartDate.Time.Format(time.DateOnly), EndDate: row.EndDate.Time.Format(time.DateOnly), StoreID: row.StoreID, IsAdmin: row.IsAdmin, MemberCount: row.MemberCount, CreatedAt: row.CreatedAt.Time}
+	return Project{ID: row.ID, Name: row.Name, StartDate: row.StartDate.Time.Format(time.DateOnly), EndDate: row.EndDate.Time.Format(time.DateOnly), StoreID: row.StoreID, IsAdmin: row.IsAdmin, MemberCount: row.MemberCount, CreatedAt: row.CreatedAt.Time, TaskCount: row.TaskCount, NotStartedCount: row.NotStartedCount, InProgressCount: row.InProgressCount, DoneCount: row.DoneCount, LateCount: row.LateCount, BlockedCount: row.BlockedCount, CompletionPercentage: row.CompletionPercentage}
 }
 func notFound(err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -166,7 +168,10 @@ func (s *Service) Remove(ctx context.Context, actor uuid.UUID, id string) error 
 	return tx.Commit(ctx)
 }
 
-type cursor struct{ ID, Value, Sort, Search string }
+type cursor struct {
+	ID, Value, Sort, Search, Day string
+	LateOnly                     bool
+}
 
 func (s *Service) List(ctx context.Context, actor uuid.UUID, input ListInput) (Page, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -174,17 +179,44 @@ func (s *Service) List(ctx context.Context, actor uuid.UUID, input ListInput) (P
 	if input.Limit < 1 || input.Limit > 100 || utf8.RuneCountInString(input.Search) > 150 || len(input.Cursor) > 4096 {
 		return Page{}, ErrInvalid
 	}
-	if input.Sort != "id" && input.Sort != "name" && input.Sort != "start_date" {
+	if input.Sort != "id" && input.Sort != "name" && input.Sort != "start_date" && input.Sort != "completion_percentage" && input.Sort != "late_count" {
 		return Page{}, ErrInvalid
 	}
 	var after cursor
+	var afterDate pgtype.Date
+	var afterPercentage float64
+	var afterCount int64
+	day := time.Now().UTC().Format(time.DateOnly)
 	if input.Cursor != "" {
 		raw, err := base64.RawURLEncoding.DecodeString(input.Cursor)
-		if err != nil || json.Unmarshal(raw, &after) != nil || after.ID == "" || after.Sort != input.Sort || after.Search != input.Search {
+		if err != nil || json.Unmarshal(raw, &after) != nil || after.ID == "" || after.Sort != input.Sort || after.Search != input.Search || after.LateOnly != input.LateOnly || after.Day != day {
 			return Page{}, ErrInvalid
 		}
 	}
-	rows, err := projectdb.New(s.pool).ListProjects(ctx, projectdb.ListProjectsParams{Actor: actor, Search: input.Search, SortBy: input.Sort, AfterID: after.ID, AfterValue: after.Value, PageSize: int32(input.Limit + 1)})
+	if after.ID != "" {
+		switch input.Sort {
+		case "start_date":
+			at, err := time.Parse(time.DateOnly, after.Value)
+			if err != nil {
+				return Page{}, ErrInvalid
+			}
+			afterDate = pgtype.Date{Time: at, Valid: true}
+		case "completion_percentage":
+			value, err := strconv.ParseFloat(after.Value, 64)
+			if err != nil || math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 100 {
+				return Page{}, ErrInvalid
+			}
+			afterPercentage = value
+		case "late_count":
+			value, err := strconv.ParseInt(after.Value, 10, 64)
+			if err != nil || value < 0 {
+				return Page{}, ErrInvalid
+			}
+			afterCount = value
+		}
+	}
+
+	rows, err := projectdb.New(s.pool).ListProjects(ctx, projectdb.ListProjectsParams{Actor: actor, Search: input.Search, SortBy: input.Sort, AfterID: after.ID, AfterValue: after.Value, AfterDate: afterDate, AfterPercentage: afterPercentage, AfterCount: afterCount, LateOnly: input.LateOnly, PageSize: int32(input.Limit + 1)})
 	if err != nil {
 		return Page{}, err
 	}
@@ -205,7 +237,13 @@ func (s *Service) List(ctx context.Context, actor uuid.UUID, input ListInput) (P
 		if input.Sort == "start_date" {
 			value = last.StartDate
 		}
-		raw, err := json.Marshal(cursor{ID: last.ID, Value: value, Sort: input.Sort, Search: input.Search})
+		if input.Sort == "completion_percentage" {
+			value = strconv.FormatFloat(last.CompletionPercentage, 'f', 2, 64)
+		}
+		if input.Sort == "late_count" {
+			value = strconv.FormatInt(last.LateCount, 10)
+		}
+		raw, err := json.Marshal(cursor{ID: last.ID, Value: value, Sort: input.Sort, Search: input.Search, LateOnly: input.LateOnly, Day: day})
 		if err != nil {
 			return Page{}, err
 		}

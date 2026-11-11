@@ -49,6 +49,44 @@ Change a member's project admin status.
 Remove a project member.
 `DELETE /projects/:id/members/:user_id`
 
+## Tasks
+
+Create a project task.
+`POST /projects/:id/tasks`
+
+List project tasks.
+`GET /projects/:id/tasks`
+
+Read a task and its allowed actions.
+`GET /projects/:id/tasks/:task_id`
+
+Replace task name and planned dates.
+`PUT /projects/:id/tasks/:task_id`
+
+Remove a task.
+`DELETE /projects/:id/tasks/:task_id`
+
+Start a task.
+`POST /projects/:id/tasks/:task_id/start`
+
+Mark a task as done.
+`POST /projects/:id/tasks/:task_id/done`
+
+Reopen a task.
+`POST /projects/:id/tasks/:task_id/reopen`
+
+List direct prerequisites.
+`GET /projects/:id/tasks/:task_id/dependencies`
+
+Add a prerequisite.
+`POST /projects/:id/tasks/:task_id/dependencies`
+
+Remove a prerequisite.
+`DELETE /projects/:id/tasks/:task_id/dependencies/:prerequisite_id`
+
+List reachable prerequisites or dependents.
+`GET /projects/:id/tasks/:task_id/relationships`
+
 ## Invitations
 
 Invite a registered user to a project.

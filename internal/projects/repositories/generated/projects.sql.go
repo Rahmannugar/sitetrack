@@ -40,7 +40,7 @@ func (q *Queries) CreateMembership(ctx context.Context, arg CreateMembershipPara
 
 const createProject = `-- name: CreateProject :one
 INSERT INTO sitetrack.projects (id, name, start_date, end_date)
-VALUES ($1, $2, $3, $4) RETURNING id, name, start_date, end_date, created_at, deleted_at
+VALUES ($1, $2, $3, $4) RETURNING id, name, start_date, end_date, created_at, deleted_at, task_number
 `
 
 type CreateProjectParams struct {
@@ -65,6 +65,7 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (S
 		&i.EndDate,
 		&i.CreatedAt,
 		&i.DeletedAt,
+		&i.TaskNumber,
 	)
 	return i, err
 }
@@ -106,12 +107,22 @@ func (q *Queries) GetMember(ctx context.Context, arg GetMemberParams) (GetMember
 }
 
 const getProject = `-- name: GetProject :one
-SELECT p.id, p.name, p.start_date, p.end_date, p.created_at, p.deleted_at, s.id AS store_id, COALESCE(m.is_admin, false)::boolean AS is_admin,
-    (SELECT count(*) FROM sitetrack.project_memberships team WHERE team.project_id = p.id)::bigint AS member_count
+SELECT p.id, p.name, p.start_date, p.end_date, p.created_at, p.deleted_at, p.task_number, s.id AS store_id, COALESCE(m.is_admin, false)::boolean AS is_admin,
+    (SELECT count(*) FROM sitetrack.project_memberships team WHERE team.project_id = p.id)::bigint AS member_count,summary.task_count,summary.not_started_count,summary.in_progress_count,summary.done_count,summary.late_count,summary.blocked_count,summary.completion_percentage
 FROM sitetrack.projects p
 JOIN sitetrack.project_stores s ON s.project_id = p.id
 JOIN sitetrack.users u ON u.id = $1
 LEFT JOIN sitetrack.project_memberships m ON m.project_id = p.id AND m.user_id = u.id
+CROSS JOIN LATERAL (
+ SELECT count(*)::bigint AS task_count,
+ count(*) FILTER(WHERE t.status='not_started')::bigint AS not_started_count,
+ count(*) FILTER(WHERE t.status='in_progress')::bigint AS in_progress_count,
+ count(*) FILTER(WHERE t.status='done')::bigint AS done_count,
+ count(*) FILTER(WHERE t.status<>'done' AND (t.end_date<(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date OR (t.status='not_started' AND t.start_date<(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date)))::bigint AS late_count,
+ count(*) FILTER(WHERE t.status<>'done' AND EXISTS(SELECT 1 FROM sitetrack.task_dependencies d WHERE d.dependent_task_id=t.id AND d.status='waiting'))::bigint AS blocked_count,
+ COALESCE(round(100.0*(count(*) FILTER(WHERE t.status='done'))/NULLIF(count(*),0),2),0)::double precision AS completion_percentage
+ FROM sitetrack.tasks t WHERE t.project_id=p.id AND t.deleted_at IS NULL
+) summary
 WHERE p.id = $2 AND p.deleted_at IS NULL AND (u.role = 'superadmin' OR m.user_id IS NOT NULL)
 `
 
@@ -121,15 +132,23 @@ type GetProjectParams struct {
 }
 
 type GetProjectRow struct {
-	ID          string
-	Name        string
-	StartDate   pgtype.Date
-	EndDate     pgtype.Date
-	CreatedAt   pgtype.Timestamptz
-	DeletedAt   pgtype.Timestamptz
-	StoreID     uuid.UUID
-	IsAdmin     bool
-	MemberCount int64
+	ID                   string
+	Name                 string
+	StartDate            pgtype.Date
+	EndDate              pgtype.Date
+	CreatedAt            pgtype.Timestamptz
+	DeletedAt            pgtype.Timestamptz
+	TaskNumber           int64
+	StoreID              uuid.UUID
+	IsAdmin              bool
+	MemberCount          int64
+	TaskCount            int64
+	NotStartedCount      int64
+	InProgressCount      int64
+	DoneCount            int64
+	LateCount            int64
+	BlockedCount         int64
+	CompletionPercentage float64
 }
 
 func (q *Queries) GetProject(ctx context.Context, arg GetProjectParams) (GetProjectRow, error) {
@@ -142,9 +161,17 @@ func (q *Queries) GetProject(ctx context.Context, arg GetProjectParams) (GetProj
 		&i.EndDate,
 		&i.CreatedAt,
 		&i.DeletedAt,
+		&i.TaskNumber,
 		&i.StoreID,
 		&i.IsAdmin,
 		&i.MemberCount,
+		&i.TaskCount,
+		&i.NotStartedCount,
+		&i.InProgressCount,
+		&i.DoneCount,
+		&i.LateCount,
+		&i.BlockedCount,
+		&i.CompletionPercentage,
 	)
 	return i, err
 }
@@ -195,48 +222,83 @@ func (q *Queries) ListMembers(ctx context.Context, arg ListMembersParams) ([]Lis
 }
 
 const listProjects = `-- name: ListProjects :many
-SELECT p.id, p.name, p.start_date, p.end_date, p.created_at, p.deleted_at, s.id AS store_id, COALESCE(m.is_admin, false)::boolean AS is_admin,
-    (SELECT count(*) FROM sitetrack.project_memberships team WHERE team.project_id = p.id)::bigint AS member_count
+SELECT p.id, p.name, p.start_date, p.end_date, p.created_at, p.deleted_at, p.task_number, s.id AS store_id, COALESCE(m.is_admin, false)::boolean AS is_admin,
+    (SELECT count(*) FROM sitetrack.project_memberships team WHERE team.project_id = p.id)::bigint AS member_count,summary.task_count,summary.not_started_count,summary.in_progress_count,summary.done_count,summary.late_count,summary.blocked_count,summary.completion_percentage
 FROM sitetrack.projects p
 JOIN sitetrack.project_stores s ON s.project_id = p.id
 JOIN sitetrack.users u ON u.id = $1
 LEFT JOIN sitetrack.project_memberships m ON m.project_id = p.id AND m.user_id = u.id
+CROSS JOIN LATERAL (
+ SELECT count(*)::bigint AS task_count,
+ count(*) FILTER(WHERE t.status='not_started')::bigint AS not_started_count,
+ count(*) FILTER(WHERE t.status='in_progress')::bigint AS in_progress_count,
+ count(*) FILTER(WHERE t.status='done')::bigint AS done_count,
+ count(*) FILTER(WHERE t.status<>'done' AND (t.end_date<(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date OR (t.status='not_started' AND t.start_date<(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date)))::bigint AS late_count,
+ count(*) FILTER(WHERE t.status<>'done' AND EXISTS(SELECT 1 FROM sitetrack.task_dependencies d WHERE d.dependent_task_id=t.id AND d.status='waiting'))::bigint AS blocked_count,
+ COALESCE(round(100.0*(count(*) FILTER(WHERE t.status='done'))/NULLIF(count(*),0),2),0)::double precision AS completion_percentage
+ FROM sitetrack.tasks t WHERE t.project_id=p.id AND t.deleted_at IS NULL
+) summary
 WHERE p.deleted_at IS NULL AND (u.role = 'superadmin' OR m.user_id IS NOT NULL)
 AND ($2::text = '' OR position(lower($2) in lower(p.name)) > 0 OR position(lower($2) in lower(p.id)) > 0)
-AND ($3::text = '' OR
-    (CASE $4::text WHEN 'name' THEN p.name WHEN 'start_date' THEN to_char(p.start_date, 'YYYY-MM-DD') ELSE p.id END, p.id) > ($5::text, $3::text))
-ORDER BY CASE $4::text WHEN 'name' THEN p.name WHEN 'start_date' THEN to_char(p.start_date, 'YYYY-MM-DD') ELSE p.id END, p.id
-LIMIT $6
+AND (NOT $3::boolean OR summary.late_count>0)
+AND ($4::text='' OR
+ ($5::text IN ('id','name') AND
+  (CASE $5::text WHEN 'name' THEN p.name ELSE p.id END,p.id)>($6::text,$4)) OR
+ ($5::text='start_date' AND (p.start_date,p.id)>($7::date,$4)) OR
+ ($5::text='completion_percentage' AND (summary.completion_percentage,p.id)>($8::double precision,$4)) OR
+ ($5::text='late_count' AND (summary.late_count,p.id)>($9::bigint,$4)))
+ORDER BY
+ CASE WHEN $5::text='name' THEN p.name END,
+ CASE WHEN $5::text='start_date' THEN p.start_date END,
+ CASE WHEN $5::text='completion_percentage' THEN summary.completion_percentage END,
+ CASE WHEN $5::text='late_count' THEN summary.late_count END,p.id
+LIMIT $10
 `
 
 type ListProjectsParams struct {
-	Actor      uuid.UUID
-	Search     string
-	AfterID    string
-	SortBy     string
-	AfterValue string
-	PageSize   int32
+	Actor           uuid.UUID
+	Search          string
+	LateOnly        bool
+	AfterID         string
+	SortBy          string
+	AfterValue      string
+	AfterDate       pgtype.Date
+	AfterPercentage float64
+	AfterCount      int64
+	PageSize        int32
 }
 
 type ListProjectsRow struct {
-	ID          string
-	Name        string
-	StartDate   pgtype.Date
-	EndDate     pgtype.Date
-	CreatedAt   pgtype.Timestamptz
-	DeletedAt   pgtype.Timestamptz
-	StoreID     uuid.UUID
-	IsAdmin     bool
-	MemberCount int64
+	ID                   string
+	Name                 string
+	StartDate            pgtype.Date
+	EndDate              pgtype.Date
+	CreatedAt            pgtype.Timestamptz
+	DeletedAt            pgtype.Timestamptz
+	TaskNumber           int64
+	StoreID              uuid.UUID
+	IsAdmin              bool
+	MemberCount          int64
+	TaskCount            int64
+	NotStartedCount      int64
+	InProgressCount      int64
+	DoneCount            int64
+	LateCount            int64
+	BlockedCount         int64
+	CompletionPercentage float64
 }
 
 func (q *Queries) ListProjects(ctx context.Context, arg ListProjectsParams) ([]ListProjectsRow, error) {
 	rows, err := q.db.Query(ctx, listProjects,
 		arg.Actor,
 		arg.Search,
+		arg.LateOnly,
 		arg.AfterID,
 		arg.SortBy,
 		arg.AfterValue,
+		arg.AfterDate,
+		arg.AfterPercentage,
+		arg.AfterCount,
 		arg.PageSize,
 	)
 	if err != nil {
@@ -253,9 +315,17 @@ func (q *Queries) ListProjects(ctx context.Context, arg ListProjectsParams) ([]L
 			&i.EndDate,
 			&i.CreatedAt,
 			&i.DeletedAt,
+			&i.TaskNumber,
 			&i.StoreID,
 			&i.IsAdmin,
 			&i.MemberCount,
+			&i.TaskCount,
+			&i.NotStartedCount,
+			&i.InProgressCount,
+			&i.DoneCount,
+			&i.LateCount,
+			&i.BlockedCount,
+			&i.CompletionPercentage,
 		); err != nil {
 			return nil, err
 		}

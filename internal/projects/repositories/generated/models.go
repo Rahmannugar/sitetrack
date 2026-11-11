@@ -10,12 +10,13 @@ import (
 )
 
 type SitetrackProject struct {
-	ID        string
-	Name      string
-	StartDate pgtype.Date
-	EndDate   pgtype.Date
-	CreatedAt pgtype.Timestamptz
-	DeletedAt pgtype.Timestamptz
+	ID         string
+	Name       string
+	StartDate  pgtype.Date
+	EndDate    pgtype.Date
+	CreatedAt  pgtype.Timestamptz
+	DeletedAt  pgtype.Timestamptz
+	TaskNumber int64
 }
 
 type SitetrackProjectInvitation struct {

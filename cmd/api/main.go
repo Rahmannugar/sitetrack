@@ -17,6 +17,7 @@ import (
 	"sitetrack/internal/infra/telemetry"
 	"sitetrack/internal/notifications"
 	"sitetrack/internal/projects"
+	"sitetrack/internal/tasks"
 )
 
 func main() {
@@ -67,7 +68,7 @@ func run(ctx context.Context, logger *slog.Logger) (resultErr error) {
 	notificationDone := make(chan struct{})
 	go func() { defer close(notificationDone); notificationService.Run() }()
 	defer func() { cancelRuntime(); <-notificationDone }()
-	router, err := newRouter(pool, monitoring, accounts, projects.NewService(pool), notificationService, cfg.RateLimit.Enabled)
+	router, err := newRouter(pool, monitoring, accounts, projects.NewService(pool), notificationService, tasks.NewService(pool), cfg.RateLimit.Enabled)
 	if err != nil {
 		return err
 	}

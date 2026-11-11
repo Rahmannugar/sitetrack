@@ -6,12 +6,12 @@ import (
 	"sitetrack/internal/infra/openapi"
 )
 
-var projectExample = json.RawMessage(`{"id":"PRJ-0001","name":"Riverside Site","start_date":"2026-11-10","end_date":"2027-02-10","store_id":"019f2aa0-7000-7000-8000-000000000002","is_admin":true,"member_count":1,"created_at":"2026-11-10T12:00:00Z"}`)
+var projectExample = json.RawMessage(`{"id":"PRJ-0001","name":"Riverside Site","start_date":"2026-11-10","end_date":"2027-02-10","store_id":"019f2aa0-7000-7000-8000-000000000002","is_admin":true,"member_count":1,"task_count":0,"not_started_count":0,"in_progress_count":0,"done_count":0,"late_count":0,"blocked_count":0,"completion_percentage":0,"created_at":"2026-11-10T12:00:00Z"}`)
 var memberExample = json.RawMessage(`{"user_id":"019f2aa0-7000-7000-8000-000000000001","name":"Site Engineer","is_admin":true,"joined_at":"2026-11-10T12:00:00Z"}`)
 
 func projectSchema() *jsonschema.Schema {
-	return &jsonschema.Schema{Type: "object", Required: []string{"id", "name", "start_date", "end_date", "store_id", "is_admin", "member_count", "created_at"}, Properties: map[string]*jsonschema.Schema{
-		"id": {Type: "string", Pattern: `^PRJ-[0-9]{4,}$`}, "name": {Type: "string"}, "start_date": {Type: "string", Format: "date"}, "end_date": {Type: "string", Format: "date"}, "store_id": {Type: "string", Format: "uuid"}, "is_admin": {Type: "boolean"}, "member_count": {Type: "integer"}, "created_at": {Type: "string", Format: "date-time"},
+	return &jsonschema.Schema{Type: "object", Required: []string{"id", "name", "start_date", "end_date", "store_id", "is_admin", "member_count", "task_count", "not_started_count", "in_progress_count", "done_count", "late_count", "blocked_count", "completion_percentage", "created_at"}, Properties: map[string]*jsonschema.Schema{
+		"id": {Type: "string", Pattern: `^PRJ-[0-9]{4,}$`}, "name": {Type: "string"}, "start_date": {Type: "string", Format: "date"}, "end_date": {Type: "string", Format: "date"}, "store_id": {Type: "string", Format: "uuid"}, "is_admin": {Type: "boolean"}, "member_count": {Type: "integer"}, "task_count": {Type: "integer"}, "not_started_count": {Type: "integer"}, "in_progress_count": {Type: "integer"}, "done_count": {Type: "integer"}, "late_count": {Type: "integer"}, "blocked_count": {Type: "integer"}, "completion_percentage": {Type: "number"}, "created_at": {Type: "string", Format: "date-time"},
 	}}
 }
 func memberSchema() *jsonschema.Schema {
@@ -80,7 +80,7 @@ func pageSchema(item *jsonschema.Schema) *jsonschema.Schema {
 func listContract(query *jsonschema.Schema) openapi.Operation {
 	op := projectOperation("listProjects", "List accessible projects", nil, nil, false)
 	op.Parameters = openapi.Parameters(query, "query")
-	op.Responses["200"] = response("Ascending order by id (default), name or start_date, with id as tie-breaker. Search is a literal case-insensitive substring of name or id. Limit defaults to 20, maximum 100. Continue with next_cursor using the same search and sort. Empty cursor ends the list.", pageSchema(projectSchema()), json.RawMessage(`{"items":[`+string(projectExample)+`],"next_cursor":""}`))
+	op.Responses["200"] = response("Ascending order by id (default), name, start_date, completion_percentage or late_count, with id as tie-breaker. Task summaries exclude removed tasks. late_only selects projects with late tasks using the UTC date. Search is a literal case-insensitive substring of name or id. Limit defaults to 20, maximum 100. Continue with next_cursor using the same search and sort. Empty cursor ends the list.", pageSchema(projectSchema()), json.RawMessage(`{"items":[`+string(projectExample)+`],"next_cursor":""}`))
 	return op
 }
 func membersContract(query, path *jsonschema.Schema) openapi.Operation {
