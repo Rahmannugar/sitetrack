@@ -11,7 +11,6 @@ import (
 	"sitetrack/internal/infra/openapi"
 	"sitetrack/internal/infra/ratelimit"
 	"sitetrack/internal/infra/request"
-	"time"
 )
 
 type projectPath struct {
@@ -66,7 +65,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 		return err
 	}
 	if err := registerEndpoints(router.Group("/company-store"), []endpoint{
-		{"GET", "", storeContract(nil, true), ratelimit.Policy{RequestsPerSecond: 20, Burst: 40, RequestsPerWindow: 600, Window: time.Minute}, func(c *gin.Context) {
+		{"GET", "", storeContract(nil, true), getCompanyStoreRateLimit, func(c *gin.Context) {
 			result, err := service.CompanyStore(c.Request.Context(), actor(c))
 			if err != nil {
 				inventoryError(c, logger, err)
@@ -74,7 +73,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 			}
 			c.JSON(http.StatusOK, result)
 		}},
-		{"GET", "/inventory", listContract(nil, companyList.Schema, true), ratelimit.Policy{RequestsPerSecond: 10, Burst: 20, RequestsPerWindow: 300, Window: time.Minute}, func(c *gin.Context) {
+		{"GET", "/inventory", listContract(nil, companyList.Schema, true), listCompanyStockRateLimit, func(c *gin.Context) {
 			value, err := companyList.DecodeQuery(c)
 			if err != nil {
 				inventoryError(c, logger, ErrInvalid)
@@ -87,7 +86,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 			}
 			c.JSON(http.StatusOK, result)
 		}},
-		{"GET", "/inventory/:material_id", itemContract("getCompanyInventoryItem", "View company stock for a material", nil, item.Schema, true), ratelimit.Policy{RequestsPerSecond: 20, Burst: 40, RequestsPerWindow: 600, Window: time.Minute}, func(c *gin.Context) {
+		{"GET", "/inventory/:material_id", itemContract("getCompanyInventoryItem", "View company stock for a material", nil, item.Schema, true), getCompanyStockRateLimit, func(c *gin.Context) {
 			path, err := item.DecodePath(c)
 			if err != nil {
 				inventoryError(c, logger, ErrInvalid)
@@ -100,7 +99,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 			}
 			c.JSON(http.StatusOK, result)
 		}},
-		{"POST", "/inventory/:material_id/add-stock", itemContract("addCompanyStock", "Add supplier stock to the company store", amount.Schema, item.Schema, true), ratelimit.Policy{RequestsPerSecond: 1, Burst: 3, RequestsPerWindow: 60, Window: time.Minute}, func(c *gin.Context) {
+		{"POST", "/inventory/:material_id/add-stock", itemContract("addCompanyStock", "Add supplier stock to the company store", amount.Schema, item.Schema, true), addStockRateLimit, func(c *gin.Context) {
 			path, err := item.DecodePath(c)
 			if err != nil {
 				inventoryError(c, logger, ErrInvalid)
@@ -118,7 +117,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 			}
 			c.JSON(http.StatusOK, result)
 		}},
-		{"PUT", "/inventory/:material_id/reorder-point", itemContract("setCompanyReorderPoint", "Set a material’s company reorder point", reorder.Schema, item.Schema, true), ratelimit.Policy{RequestsPerSecond: 1, Burst: 3, RequestsPerWindow: 30, Window: time.Minute}, func(c *gin.Context) {
+		{"PUT", "/inventory/:material_id/reorder-point", itemContract("setCompanyReorderPoint", "Set a material’s company reorder point", reorder.Schema, item.Schema, true), setReorderPointRateLimit, func(c *gin.Context) {
 			path, err := item.DecodePath(c)
 			if err != nil {
 				inventoryError(c, logger, ErrInvalid)
@@ -140,7 +139,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 		return err
 	}
 	return registerEndpoints(router.Group("/projects/:id/store"), []endpoint{
-		{"GET", "", storeContract(project.Schema, false), ratelimit.Policy{RequestsPerSecond: 20, Burst: 40, RequestsPerWindow: 600, Window: time.Minute}, func(c *gin.Context) {
+		{"GET", "", storeContract(project.Schema, false), getProjectStoreRateLimit, func(c *gin.Context) {
 			path, err := project.DecodePath(c)
 			if err != nil {
 				inventoryError(c, logger, ErrInvalid)
@@ -153,7 +152,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 			}
 			c.JSON(http.StatusOK, result)
 		}},
-		{"GET", "/inventory", listContract(project.Schema, projectList.Schema, false), ratelimit.Policy{RequestsPerSecond: 10, Burst: 20, RequestsPerWindow: 300, Window: time.Minute}, func(c *gin.Context) {
+		{"GET", "/inventory", listContract(project.Schema, projectList.Schema, false), listProjectStockRateLimit, func(c *gin.Context) {
 			path, err := project.DecodePath(c)
 			if err != nil {
 				inventoryError(c, logger, ErrInvalid)
@@ -171,7 +170,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 			}
 			c.JSON(http.StatusOK, result)
 		}},
-		{"GET", "/inventory/:material_id", itemContract("getProjectInventoryItem", "View project stock for a material", nil, projectItem.Schema, false), ratelimit.Policy{RequestsPerSecond: 20, Burst: 40, RequestsPerWindow: 600, Window: time.Minute}, func(c *gin.Context) {
+		{"GET", "/inventory/:material_id", itemContract("getProjectInventoryItem", "View project stock for a material", nil, projectItem.Schema, false), getProjectStockRateLimit, func(c *gin.Context) {
 			path, err := projectItem.DecodePath(c)
 			if err != nil {
 				inventoryError(c, logger, ErrInvalid)
@@ -193,7 +192,11 @@ func registerEndpoints(group *gin.RouterGroup, endpoints []endpoint, accounts au
 		if err != nil {
 			return err
 		}
-		if err := contracts.Register(group, endpoint.method, endpoint.path, endpoint.operation, limit.Middleware(enabled), authentication.RequireSession(accounts, logger), endpoint.handler); err != nil {
+		session, err := authentication.RequireRateLimitedSession(accounts, logger, endpoint.policy, enabled)
+		if err != nil {
+			return err
+		}
+		if err := contracts.Register(group, endpoint.method, endpoint.path, endpoint.operation, limit.Middleware(enabled), session, endpoint.handler); err != nil {
 			return err
 		}
 	}

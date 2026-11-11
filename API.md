@@ -1,159 +1,71 @@
 # SiteTrack API
 
+## API reference
+
+Download the OpenAPI specification.
+`GET /openapi.json`
+
+View the interactive API reference.
+`GET /docs`
+
 ## Authentication
 
 Create an account.
 `POST /auth/signup`
 
-Verify an email address using its OTP.
-`POST /auth/verify-email`
-
-Request another verification code.
-`POST /auth/resend-verification`
-
 Log in.
 `POST /auth/login`
-
-Refresh your session.
-`POST /auth/refresh`
-
-Read your profile.
-`GET /auth/me`
 
 Log out.
 `POST /auth/logout`
 
+Read your profile.
+`GET /auth/me`
+
+Refresh your session.
+`POST /auth/refresh`
+
 Request a password reset code.
 `POST /auth/forgot-password`
+
+Request another verification code.
+`POST /auth/resend-verification`
 
 Reset your password using the OTP.
 `POST /auth/reset-password`
 
-## Projects
-
-Create a project.
-`POST /projects`
-
-List projects.
-`GET /projects`
-
-View a project.
-`GET /projects/:id`
-
-Replace a project's name and planned dates.
-`PUT /projects/:id`
-
-Remove a project.
-`DELETE /projects/:id`
-
-List project members.
-`GET /projects/:id/members`
-
-Change a member's project admin status.
-`PATCH /projects/:id/members/:user_id`
-
-Remove a project member.
-`DELETE /projects/:id/members/:user_id`
-
-## Tasks
-
-Create a project task as a project admin.
-`POST /projects/:id/tasks`
-
-List project tasks.
-`GET /projects/:id/tasks`
-
-Read a task and its allowed actions.
-`GET /projects/:id/tasks/:task_id`
-
-Update a task’s name and dates as a project admin.
-`PUT /projects/:id/tasks/:task_id`
-
-Remove a task as a project admin.
-`DELETE /projects/:id/tasks/:task_id`
-
-Start a task as a project admin.
-`POST /projects/:id/tasks/:task_id/start`
-
-Mark a task as done as a project admin.
-`POST /projects/:id/tasks/:task_id/done`
-
-Reopen a task as a project admin.
-`POST /projects/:id/tasks/:task_id/reopen`
-
-List tasks this task depends on.
-`GET /projects/:id/tasks/:task_id/dependencies`
-
-Add a task dependency as a project admin.
-`POST /projects/:id/tasks/:task_id/dependencies`
-
-Remove a task dependency as a project admin.
-`DELETE /projects/:id/tasks/:task_id/dependencies/:required_task_id`
-
-List all tasks this task depends on, or tasks depending on it.
-`GET /projects/:id/tasks/:task_id/relationships`
-
-## Materials
-
-Create a material as a company store manager or SuperAdmin.
-`POST /materials`
-
-List materials.
-`GET /materials`
-
-View a material.
-`GET /materials/:id`
-
-Update a material as a company store manager or SuperAdmin.
-`PUT /materials/:id`
-
-Remove a material as a company store manager or SuperAdmin.
-`DELETE /materials/:id`
-
-Create a material category as a company store manager or SuperAdmin.
-`POST /material-categories`
-
-List material categories.
-`GET /material-categories`
-
-View a material category.
-`GET /material-categories/:id`
-
-Update a material category as a company store manager or SuperAdmin.
-`PUT /material-categories/:id`
-
-Remove a material category as a company store manager or SuperAdmin.
-`DELETE /material-categories/:id`
+Verify an email address using its OTP.
+`POST /auth/verify-email`
 
 ## Company store
-
-View the company store.
-`GET /company-store`
-
-List company store stock.
-`GET /company-store/inventory`
-
-View company stock for a material.
-`GET /company-store/inventory/:material_id`
 
 Add supplier stock to the company store.
 `POST /company-store/inventory/:material_id/add-stock`
 
+List company store stock.
+`GET /company-store/inventory`
+
 Set a material’s company reorder point.
 `PUT /company-store/inventory/:material_id/reorder-point`
 
-## Project store
+View company stock for a material.
+`GET /company-store/inventory/:material_id`
 
-View a project store.
-`GET /projects/:id/store`
+View the company store.
+`GET /company-store`
 
-List project store stock.
-`GET /projects/:id/store/inventory`
+## Health
 
-View project stock for a material.
-`GET /projects/:id/store/inventory/:material_id`
+Check database readiness.
+`GET /health/ready`
+
+Report whether the API process is serving requests.
+`GET /health/live`
 
 ## Invitations
+
+Accept or reject your invitation.
+`POST /invitations/:invitation_id/respond`
 
 Invite a registered user to a project.
 `POST /projects/:id/invitations`
@@ -164,16 +76,45 @@ List project invitations.
 Withdraw a pending invitation.
 `DELETE /projects/:id/invitations/:invitation_id`
 
-Accept or reject your invitation.
-`POST /invitations/:invitation_id/respond`
+## Materials
+
+Create a material as a company store manager or SuperAdmin.
+`POST /materials`
+
+Create a material category as a company store manager or SuperAdmin.
+`POST /material-categories`
+
+List material categories.
+`GET /material-categories`
+
+List materials.
+`GET /materials`
+
+Remove a material as a company store manager or SuperAdmin.
+`DELETE /materials/:id`
+
+Remove a material category as a company store manager or SuperAdmin.
+`DELETE /material-categories/:id`
+
+Update a material as a company store manager or SuperAdmin.
+`PUT /materials/:id`
+
+Update a material category as a company store manager or SuperAdmin.
+`PUT /material-categories/:id`
+
+View a material category.
+`GET /material-categories/:id`
+
+View a material.
+`GET /materials/:id`
 
 ## Notifications
 
-List your notifications.
-`GET /notifications`
-
 Count your unread notifications.
 `GET /notifications/unread-count`
+
+List your notifications.
+`GET /notifications`
 
 Mark a notification as read.
 `PATCH /notifications/:id/read`
@@ -184,18 +125,77 @@ Mark all your notifications as read.
 Stream your notification updates.
 `GET /notifications/stream`
 
-## Health
+## Project store
 
-Report whether the API process is serving requests.
-`GET /health/live`
+List project store stock.
+`GET /projects/:id/store/inventory`
 
-Check database readiness.
-`GET /health/ready`
+View a project store.
+`GET /projects/:id/store`
 
-## API reference
+View project stock for a material.
+`GET /projects/:id/store/inventory/:material_id`
 
-View the interactive API reference.
-`GET /docs`
+## Projects
 
-Download the OpenAPI specification.
-`GET /openapi.json`
+Change a member's project admin status.
+`PATCH /projects/:id/members/:user_id`
+
+Create a project.
+`POST /projects`
+
+List project members.
+`GET /projects/:id/members`
+
+List projects.
+`GET /projects`
+
+Remove a project member.
+`DELETE /projects/:id/members/:user_id`
+
+Remove a project.
+`DELETE /projects/:id`
+
+Replace a project's name and planned dates.
+`PUT /projects/:id`
+
+View a project.
+`GET /projects/:id`
+
+## Tasks
+
+Add a task dependency as a project admin.
+`POST /projects/:id/tasks/:task_id/dependencies`
+
+Create a project task as a project admin.
+`POST /projects/:id/tasks`
+
+List all tasks this task depends on, or tasks depending on it.
+`GET /projects/:id/tasks/:task_id/relationships`
+
+List project tasks.
+`GET /projects/:id/tasks`
+
+List tasks this task depends on.
+`GET /projects/:id/tasks/:task_id/dependencies`
+
+Mark a task as done as a project admin.
+`POST /projects/:id/tasks/:task_id/done`
+
+Read a task and its allowed actions.
+`GET /projects/:id/tasks/:task_id`
+
+Remove a task as a project admin.
+`DELETE /projects/:id/tasks/:task_id`
+
+Remove a task dependency as a project admin.
+`DELETE /projects/:id/tasks/:task_id/dependencies/:required_task_id`
+
+Reopen a task as a project admin.
+`POST /projects/:id/tasks/:task_id/reopen`
+
+Start a task as a project admin.
+`POST /projects/:id/tasks/:task_id/start`
+
+Update a task’s name and dates as a project admin.
+`PUT /projects/:id/tasks/:task_id`

@@ -11,6 +11,8 @@
     <script>
       Scalar.createApiReference('#app', {
         url: '/openapi.json',
+        tagsSorter: 'alpha',
+        operationsSorter: 'alpha',
         persistAuth: false,
         telemetry: false,
       })

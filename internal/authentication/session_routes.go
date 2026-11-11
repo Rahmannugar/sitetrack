@@ -3,7 +3,6 @@ package authentication
 import (
 	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -23,17 +22,21 @@ func registerSessions(group *gin.RouterGroup, accounts Accounts, contracts *open
 	}
 	group = group.Group("", func(c *gin.Context) { c.Header("Cache-Control", "no-store"); c.Next() })
 	for _, endpoint := range []struct {
-		method, path string
-		policy       ratelimit.Policy
-		operation    openapi.Operation
-		protected    bool
-		handler      gin.HandlerFunc
+		method, path   string
+		policy         ratelimit.Policy
+		identityPolicy ratelimit.Policy
+		operation      openapi.Operation
+		protected      bool
+		handler        gin.HandlerFunc
 	}{
-		{http.MethodPost, "/login", ratelimit.Policy{RequestsPerSecond: 1, Burst: 5, RequestsPerWindow: 20, Window: 10 * time.Minute}, loginContract(login.Schema), false,
+		{http.MethodPost, "/login", loginRateLimit, loginEmailRateLimit, loginContract(login.Schema), false,
 			func(c *gin.Context) {
 				input, err := login.Decode(c)
 				if err != nil {
 					accountError(c, logger, request.ErrInvalid)
+					return
+				}
+				if !allowEmailRequest(c, input.Email) {
 					return
 				}
 				pair, err := accounts.Login(c.Request.Context(), input)
@@ -43,7 +46,7 @@ func registerSessions(group *gin.RouterGroup, accounts Accounts, contracts *open
 				}
 				c.JSON(http.StatusOK, pair)
 			}},
-		{http.MethodPost, "/refresh", ratelimit.Policy{RequestsPerSecond: 5, Burst: 10, RequestsPerWindow: 120, Window: time.Minute}, refreshContract(refresh.Schema), false,
+		{http.MethodPost, "/refresh", refreshRateLimit, refreshAccountRateLimit, refreshContract(refresh.Schema), false,
 			func(c *gin.Context) {
 				input, err := refresh.Decode(c)
 				if err != nil {
@@ -57,12 +60,12 @@ func registerSessions(group *gin.RouterGroup, accounts Accounts, contracts *open
 				}
 				c.JSON(http.StatusOK, pair)
 			}},
-		{http.MethodGet, "/me", ratelimit.Policy{RequestsPerSecond: 20, Burst: 40, RequestsPerWindow: 1200, Window: time.Minute}, profileContract(), true,
+		{http.MethodGet, "/me", profileRateLimit, profileRateLimit, profileContract(), true,
 			func(c *gin.Context) {
 				principal, _ := CurrentPrincipal(c.Request.Context())
 				c.JSON(http.StatusOK, principal.User)
 			}},
-		{http.MethodPost, "/logout", ratelimit.Policy{RequestsPerSecond: 1, Burst: 5, RequestsPerWindow: 30, Window: time.Minute}, logoutContract(), true,
+		{http.MethodPost, "/logout", logoutRateLimit, logoutRateLimit, logoutContract(), true,
 			func(c *gin.Context) {
 				principal, _ := CurrentPrincipal(c.Request.Context())
 				if err := accounts.Logout(c.Request.Context(), principal); err != nil {
@@ -78,7 +81,17 @@ func registerSessions(group *gin.RouterGroup, accounts Accounts, contracts *open
 		}
 		handlers := []gin.HandlerFunc{limit.Middleware(enabled)}
 		if endpoint.protected {
-			handlers = append(handlers, RequireSession(accounts, logger))
+			session, err := RequireRateLimitedSession(accounts, logger, endpoint.identityPolicy, enabled)
+			if err != nil {
+				return err
+			}
+			handlers = append(handlers, session)
+		} else {
+			identityLimit, err := ratelimit.New(endpoint.identityPolicy)
+			if err != nil {
+				return err
+			}
+			handlers = append(handlers, identityRateLimit(identityLimit, enabled))
 		}
 		handlers = append(handlers, endpoint.handler)
 		if err := contracts.Register(group, endpoint.method, endpoint.path, endpoint.operation, handlers...); err != nil {

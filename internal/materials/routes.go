@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -40,7 +39,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 		return err
 	}
 	endpoints := []endpoint{
-		{http.MethodPost, "", resourceContract("createMaterial", "Create a material", input.Schema, nil, false, true), ratelimit.Policy{RequestsPerSecond: 2, Burst: 5, RequestsPerWindow: 60, Window: time.Minute}, func(c *gin.Context) {
+		{http.MethodPost, "", resourceContract("createMaterial", "Create a material", input.Schema, nil, false, true), createMaterialRateLimit, func(c *gin.Context) {
 			value, err := input.Decode(c)
 			if err != nil {
 				catalogueError(c, logger, ErrInvalid)
@@ -54,7 +53,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 			c.Header("Location", "/materials/"+result.ID.String())
 			c.JSON(http.StatusCreated, result)
 		}},
-		{http.MethodGet, "", listingContract("listMaterials", "List materials", listing.Schema, false), ratelimit.Policy{RequestsPerSecond: 10, Burst: 20, RequestsPerWindow: 300, Window: time.Minute}, func(c *gin.Context) {
+		{http.MethodGet, "", listingContract("listMaterials", "List materials", listing.Schema, false), listMaterialsRateLimit, func(c *gin.Context) {
 			value, err := listing.DecodeQuery(c)
 			if err != nil {
 				catalogueError(c, logger, ErrInvalid)
@@ -67,7 +66,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 			}
 			c.JSON(http.StatusOK, result)
 		}},
-		{http.MethodGet, "/:id", resourceContract("getMaterial", "View a material", nil, path.Schema, false, false), ratelimit.Policy{RequestsPerSecond: 20, Burst: 40, RequestsPerWindow: 600, Window: time.Minute}, func(c *gin.Context) {
+		{http.MethodGet, "/:id", resourceContract("getMaterial", "View a material", nil, path.Schema, false, false), getMaterialRateLimit, func(c *gin.Context) {
 			value, err := path.DecodePath(c)
 			if err != nil {
 				catalogueError(c, logger, ErrInvalid)
@@ -80,7 +79,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 			}
 			c.JSON(http.StatusOK, result)
 		}},
-		{http.MethodPut, "/:id", resourceContract("updateMaterial", "Update a material", input.Schema, path.Schema, false, false), ratelimit.Policy{RequestsPerSecond: 2, Burst: 5, RequestsPerWindow: 90, Window: time.Minute}, func(c *gin.Context) {
+		{http.MethodPut, "/:id", resourceContract("updateMaterial", "Update a material", input.Schema, path.Schema, false, false), updateMaterialRateLimit, func(c *gin.Context) {
 			params, err := path.DecodePath(c)
 			if err != nil {
 				catalogueError(c, logger, ErrInvalid)
@@ -98,7 +97,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 			}
 			c.JSON(http.StatusOK, result)
 		}},
-		{http.MethodDelete, "/:id", removalContract("removeMaterial", "Remove a material", path.Schema, false), ratelimit.Policy{RequestsPerSecond: 1, Burst: 3, RequestsPerWindow: 30, Window: time.Minute}, func(c *gin.Context) {
+		{http.MethodDelete, "/:id", removalContract("removeMaterial", "Remove a material", path.Schema, false), removeMaterialRateLimit, func(c *gin.Context) {
 			params, err := path.DecodePath(c)
 			if err != nil {
 				catalogueError(c, logger, ErrInvalid)
@@ -131,7 +130,7 @@ func registerCategories(router *gin.RouterGroup, service *Service, accounts auth
 		return err
 	}
 	return registerEndpoints(router.Group("/material-categories"), []endpoint{
-		{http.MethodPost, "", resourceContract("createMaterialCategory", "Create a material category", input.Schema, nil, true, true), ratelimit.Policy{RequestsPerSecond: 1, Burst: 3, RequestsPerWindow: 30, Window: time.Minute}, func(c *gin.Context) {
+		{http.MethodPost, "", resourceContract("createMaterialCategory", "Create a material category", input.Schema, nil, true, true), createCategoryRateLimit, func(c *gin.Context) {
 			value, err := input.Decode(c)
 			if err != nil {
 				catalogueError(c, logger, ErrInvalid)
@@ -145,7 +144,7 @@ func registerCategories(router *gin.RouterGroup, service *Service, accounts auth
 			c.Header("Location", "/material-categories/"+result.ID.String())
 			c.JSON(http.StatusCreated, result)
 		}},
-		{http.MethodGet, "", listingContract("listMaterialCategories", "List material categories", listing.Schema, true), ratelimit.Policy{RequestsPerSecond: 10, Burst: 20, RequestsPerWindow: 300, Window: time.Minute}, func(c *gin.Context) {
+		{http.MethodGet, "", listingContract("listMaterialCategories", "List material categories", listing.Schema, true), listCategoriesRateLimit, func(c *gin.Context) {
 			value, err := listing.DecodeQuery(c)
 			if err != nil {
 				catalogueError(c, logger, ErrInvalid)
@@ -158,7 +157,7 @@ func registerCategories(router *gin.RouterGroup, service *Service, accounts auth
 			}
 			c.JSON(http.StatusOK, result)
 		}},
-		{http.MethodGet, "/:id", resourceContract("getMaterialCategory", "View a material category", nil, path.Schema, true, false), ratelimit.Policy{RequestsPerSecond: 20, Burst: 40, RequestsPerWindow: 600, Window: time.Minute}, func(c *gin.Context) {
+		{http.MethodGet, "/:id", resourceContract("getMaterialCategory", "View a material category", nil, path.Schema, true, false), getCategoryRateLimit, func(c *gin.Context) {
 			value, err := path.DecodePath(c)
 			if err != nil {
 				catalogueError(c, logger, ErrInvalid)
@@ -171,7 +170,7 @@ func registerCategories(router *gin.RouterGroup, service *Service, accounts auth
 			}
 			c.JSON(http.StatusOK, result)
 		}},
-		{http.MethodPut, "/:id", resourceContract("updateMaterialCategory", "Update a material category", input.Schema, path.Schema, true, false), ratelimit.Policy{RequestsPerSecond: 1, Burst: 3, RequestsPerWindow: 30, Window: time.Minute}, func(c *gin.Context) {
+		{http.MethodPut, "/:id", resourceContract("updateMaterialCategory", "Update a material category", input.Schema, path.Schema, true, false), updateCategoryRateLimit, func(c *gin.Context) {
 			params, err := path.DecodePath(c)
 			if err != nil {
 				catalogueError(c, logger, ErrInvalid)
@@ -189,7 +188,7 @@ func registerCategories(router *gin.RouterGroup, service *Service, accounts auth
 			}
 			c.JSON(http.StatusOK, result)
 		}},
-		{http.MethodDelete, "/:id", removalContract("removeMaterialCategory", "Remove a material category", path.Schema, true), ratelimit.Policy{RequestsPerSecond: 1, Burst: 2, RequestsPerWindow: 20, Window: time.Minute}, func(c *gin.Context) {
+		{http.MethodDelete, "/:id", removalContract("removeMaterialCategory", "Remove a material category", path.Schema, true), removeCategoryRateLimit, func(c *gin.Context) {
 			value, err := path.DecodePath(c)
 			if err != nil {
 				catalogueError(c, logger, ErrInvalid)
@@ -214,7 +213,11 @@ func registerEndpoints(group *gin.RouterGroup, endpoints []endpoint, accounts au
 		if err != nil {
 			return err
 		}
-		if err := contracts.Register(group, endpoint.method, endpoint.path, endpoint.operation, limit.Middleware(enabled), authentication.RequireSession(accounts, logger), endpoint.handler); err != nil {
+		session, err := authentication.RequireRateLimitedSession(accounts, logger, endpoint.policy, enabled)
+		if err != nil {
+			return err
+		}
+		if err := contracts.Register(group, endpoint.method, endpoint.path, endpoint.operation, limit.Middleware(enabled), session, endpoint.handler); err != nil {
 			return err
 		}
 	}

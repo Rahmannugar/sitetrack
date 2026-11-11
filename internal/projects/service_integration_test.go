@@ -446,7 +446,7 @@ func TestProjectHTTPContractsAndImmediateRevocation(t *testing.T) {
 	if err := Register(limits.Group(""), f.s, f.accounts, openapi.New(), true, slog.New(slog.NewTextHandler(io.Discard, nil))); err != nil {
 		t.Fatal(err)
 	}
-	for range 3 {
+	for range createProjectRateLimit.Burst {
 		if w := perform(limits, "POST", "/projects", "", ""); w.Code != 401 {
 			t.Fatalf("unexpected unauthenticated limit status: %d", w.Code)
 		}

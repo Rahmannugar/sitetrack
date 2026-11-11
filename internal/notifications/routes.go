@@ -11,7 +11,6 @@ import (
 	"sitetrack/internal/infra/openapi"
 	"sitetrack/internal/infra/ratelimit"
 	"sitetrack/internal/infra/request"
-	"time"
 )
 
 type notificationPath struct {
@@ -38,7 +37,7 @@ func Register(router, streams *gin.RouterGroup, service *Service, accounts authe
 		policy       ratelimit.Policy
 		handler      gin.HandlerFunc
 	}{
-		{"GET", "", listContract(list.Schema), ratelimit.Policy{RequestsPerSecond: 10, Burst: 20, RequestsPerWindow: 300, Window: time.Minute}, func(c *gin.Context) {
+		{"GET", "", listContract(list.Schema), listNotificationsRateLimit, func(c *gin.Context) {
 			input, err := list.DecodeQuery(c)
 			if err != nil {
 				notificationError(c, logger, ErrInvalid)
@@ -52,7 +51,7 @@ func Register(router, streams *gin.RouterGroup, service *Service, accounts authe
 			}
 			c.JSON(http.StatusOK, page)
 		}},
-		{"GET", "/unread-count", unreadContract(), ratelimit.Policy{RequestsPerSecond: 10, Burst: 20, RequestsPerWindow: 600, Window: time.Minute}, func(c *gin.Context) {
+		{"GET", "/unread-count", unreadContract(), unreadCountRateLimit, func(c *gin.Context) {
 			principal, _ := authentication.CurrentPrincipal(c.Request.Context())
 			count, err := service.Unread(c.Request.Context(), principal.User.ID)
 			if err != nil {
@@ -61,7 +60,7 @@ func Register(router, streams *gin.RouterGroup, service *Service, accounts authe
 			}
 			c.JSON(http.StatusOK, streamState{UnreadCount: count})
 		}},
-		{"PATCH", "/:id/read", readContract(path.Schema, false), ratelimit.Policy{RequestsPerSecond: 5, Burst: 10, RequestsPerWindow: 120, Window: time.Minute}, func(c *gin.Context) {
+		{"PATCH", "/:id/read", readContract(path.Schema, false), readNotificationRateLimit, func(c *gin.Context) {
 			input, err := path.DecodePath(c)
 			if err != nil {
 				notificationError(c, logger, ErrInvalid)
@@ -74,7 +73,7 @@ func Register(router, streams *gin.RouterGroup, service *Service, accounts authe
 			}
 			c.Status(http.StatusNoContent)
 		}},
-		{"PATCH", "/read-all", readContract(nil, true), ratelimit.Policy{RequestsPerSecond: 1, Burst: 2, RequestsPerWindow: 20, Window: time.Minute}, func(c *gin.Context) {
+		{"PATCH", "/read-all", readContract(nil, true), readAllNotificationsRateLimit, func(c *gin.Context) {
 			principal, _ := authentication.CurrentPrincipal(c.Request.Context())
 			if err := service.ReadAll(c.Request.Context(), principal.User.ID); err != nil {
 				notificationError(c, logger, err)
@@ -87,15 +86,23 @@ func Register(router, streams *gin.RouterGroup, service *Service, accounts authe
 		if err != nil {
 			return err
 		}
-		if err = contracts.Register(group, endpoint.method, endpoint.path, endpoint.operation, limiter.Middleware(enabled), authentication.RequireSession(accounts, logger), endpoint.handler); err != nil {
+		session, err := authentication.RequireRateLimitedSession(accounts, logger, endpoint.policy, enabled)
+		if err != nil {
+			return err
+		}
+		if err = contracts.Register(group, endpoint.method, endpoint.path, endpoint.operation, limiter.Middleware(enabled), session, endpoint.handler); err != nil {
 			return err
 		}
 	}
-	limiter, err := ratelimit.New(ratelimit.Policy{RequestsPerSecond: 1, Burst: 3, RequestsPerWindow: 20, Window: time.Minute})
+	limiter, err := ratelimit.New(streamNotificationsRateLimit)
 	if err != nil {
 		return err
 	}
-	return contracts.Register(streams, "GET", "/notifications/stream", streamContract(stream.Schema), limiter.Middleware(enabled), authentication.RequireSession(accounts, logger), func(c *gin.Context) {
+	session, err := authentication.RequireRateLimitedSession(accounts, logger, streamNotificationsRateLimit, enabled)
+	if err != nil {
+		return err
+	}
+	return contracts.Register(streams, "GET", "/notifications/stream", streamContract(stream.Schema), limiter.Middleware(enabled), session, func(c *gin.Context) {
 		input, err := stream.DecodeHeader(c)
 		if err != nil {
 			notificationError(c, logger, ErrInvalid)

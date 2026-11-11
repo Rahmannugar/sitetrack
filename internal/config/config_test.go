@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/knadh/koanf/v2"
 )
 
 func envFile(t *testing.T, settings string) string {
@@ -14,6 +16,13 @@ func envFile(t *testing.T, settings string) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+func TestRateLimitDefaultsToEnabled(t *testing.T) {
+	cfg, err := loadRateLimit(koanf.New("."))
+	if err != nil || !cfg.Enabled {
+		t.Fatalf("rate limiting must be enabled without configuration: %v", err)
+	}
 }
 
 func TestSeparatePoolLimitsAndEnvironmentOverride(t *testing.T) {

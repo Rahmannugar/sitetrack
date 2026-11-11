@@ -16,6 +16,7 @@ import (
 
 	"sitetrack/internal/authentication/repositories"
 	authdb "sitetrack/internal/authentication/repositories/generated"
+	"sitetrack/internal/infra/ratelimit"
 )
 
 const (
@@ -166,6 +167,10 @@ func (s *Service) Refresh(ctx context.Context, rawToken string) (TokenPair, erro
 		return TokenPair{}, err
 	}
 	expiry := at.Add(sessionLifetime)
+	// We check before committing so throttling leaves the original refresh token usable.
+	if err := ratelimit.CheckIdentity(ctx, "account:"+current.UserID.String()); err != nil {
+		return TokenPair{}, err
+	}
 	if maximum := current.CreatedAt.Time.Add(maximumSessionLifetime); expiry.After(maximum) {
 		expiry = maximum
 	}

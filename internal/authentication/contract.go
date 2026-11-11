@@ -79,7 +79,7 @@ func errorContract(description string, messages map[string]string) openapi.Respo
 
 func accountErrorContracts() map[string]openapi.Response {
 	return map[string]openapi.Response{
-		"429": errorContract("The endpoint's IP rate limit is exhausted.", map[string]string{"limited": "rate limit exceeded"}),
+		"429": errorContract("The endpoint's rate limit is exhausted.", map[string]string{"limited": "rate limit exceeded"}),
 		"500": errorContract("The operation could not complete.", map[string]string{"failure": "internal server error"}),
 		"504": errorContract("The operation timeout expired.", map[string]string{"timeout": "request timed out"}),
 	}

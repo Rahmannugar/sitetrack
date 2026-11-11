@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"sitetrack/internal/infra/openapi"
+	"sitetrack/internal/infra/ratelimit"
 )
 
 func verifiedAccount(t *testing.T, service *Service) SignupInput {
@@ -290,5 +291,30 @@ func TestProfileUsesCurrentRoleAndSessionIdentity(t *testing.T) {
 	}
 	if _, err := s.Authenticate(context.Background(), pair.AccessToken+"tampered"); !errors.Is(err, ErrUnauthenticated) {
 		t.Fatal("tampered JWT accepted")
+	}
+}
+
+func TestRateLimitedRefreshPreservesCurrentToken(t *testing.T) {
+	s, _, _ := accountTest(t)
+	pair := loggedIn(t, s, verifiedAccount(t, s))
+	limit, err := ratelimit.New(ratelimit.Policy{RequestsPerSecond: 100, Burst: 100, RequestsPerWindow: 1, Window: time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := ratelimit.WithIdentityLimiter(context.Background(), limit, true)
+	current, err := s.Refresh(ctx, pair.RefreshToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.Refresh(ctx, current.RefreshToken)
+	var exceeded *ratelimit.Exceeded
+	if !errors.As(err, &exceeded) {
+		t.Fatalf("expected rate limit, got %v", err)
+	}
+	if _, err := s.Authenticate(context.Background(), current.AccessToken); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Refresh(context.Background(), current.RefreshToken); err != nil {
+		t.Fatalf("throttling consumed current token: %v", err)
 	}
 }

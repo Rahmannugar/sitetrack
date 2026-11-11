@@ -1,6 +1,7 @@
 package ratelimit
 
 import (
+	"context"
 	"errors"
 	"math"
 	"net/http"
@@ -39,6 +40,45 @@ type Limiter struct {
 	lastCleanup time.Time
 }
 
+type Exceeded struct{ RetryAfter time.Duration }
+
+func (e *Exceeded) Error() string { return "rate limit exceeded" }
+
+type identityLimiterKey struct{}
+
+func WithIdentityLimiter(ctx context.Context, limiter *Limiter, enabled bool) context.Context {
+	if !enabled {
+		limiter = nil
+	}
+	return context.WithValue(ctx, identityLimiterKey{}, limiter)
+}
+
+func CheckIdentity(ctx context.Context, key string) error {
+	limiter, _ := ctx.Value(identityLimiterKey{}).(*Limiter)
+	if limiter == nil {
+		return nil
+	}
+	return limiter.Check(key)
+}
+
+func (l *Limiter) Check(key string) error {
+	if allowed, wait := l.allow(key, time.Now()); !allowed {
+		return &Exceeded{RetryAfter: wait}
+	}
+	return nil
+}
+
+func Respond(c *gin.Context, err error) bool {
+	var exceeded *Exceeded
+	if !errors.As(err, &exceeded) {
+		return false
+	}
+	seconds := max(1, int(math.Ceil(exceeded.RetryAfter.Seconds())))
+	c.Header("Retry-After", strconv.Itoa(seconds))
+	c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "rate limit exceeded"})
+	return true
+}
+
 func New(policy Policy) (*Limiter, error) {
 	if policy.RequestsPerSecond < 1 || policy.Burst < 1 || policy.RequestsPerWindow < 1 || policy.Window <= 0 {
 		return nil, errors.New("rate-limit policy must have a positive refill rate, burst, window and request count")
@@ -57,10 +97,7 @@ func (l *Limiter) Middleware(enabled bool) gin.HandlerFunc {
 		if err == nil {
 			key = peer.Addr().Unmap().String()
 		}
-		if allowed, wait := l.allow(key, time.Now()); !allowed {
-			seconds := max(1, int(math.Ceil(wait.Seconds())))
-			c.Header("Retry-After", strconv.Itoa(seconds))
-			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "rate limit exceeded"})
+		if Respond(c, l.Check(key)) {
 			return
 		}
 		c.Next()

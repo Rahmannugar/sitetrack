@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -40,16 +39,20 @@ func Register(router *gin.RouterGroup, accounts Accounts, contracts *openapi.Reg
 	}
 	group := router.Group("/auth")
 	for _, endpoint := range []struct {
-		path      string
-		policy    ratelimit.Policy
-		operation openapi.Operation
-		handler   gin.HandlerFunc
+		path        string
+		policy      ratelimit.Policy
+		emailPolicy ratelimit.Policy
+		operation   openapi.Operation
+		handler     gin.HandlerFunc
 	}{
-		{"/signup", ratelimit.Policy{RequestsPerSecond: 1, Burst: 3, RequestsPerWindow: 10, Window: time.Hour},
+		{"/signup", signupRateLimit, signupEmailRateLimit,
 			signupContract(signup.Schema), func(c *gin.Context) {
 				input, err := signup.Decode(c)
 				if err != nil {
 					c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request body"})
+					return
+				}
+				if !allowEmailRequest(c, input.Email) {
 					return
 				}
 				if err := accounts.Signup(c.Request.Context(), input); err != nil {
@@ -58,11 +61,14 @@ func Register(router *gin.RouterGroup, accounts Accounts, contracts *openapi.Reg
 				}
 				c.JSON(http.StatusCreated, messageResponse{Message: "Check your email for a verification code."})
 			}},
-		{"/verify-email", ratelimit.Policy{RequestsPerSecond: 2, Burst: 5, RequestsPerWindow: 30, Window: time.Minute},
+		{"/verify-email", verifyEmailRateLimit, verifyEmailAddressRateLimit,
 			verifyContract(verify.Schema), func(c *gin.Context) {
 				input, err := verify.Decode(c)
 				if err != nil {
 					c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request body"})
+					return
+				}
+				if !allowEmailRequest(c, input.Email) {
 					return
 				}
 				if err := accounts.Verify(c.Request.Context(), input); err != nil {
@@ -71,11 +77,14 @@ func Register(router *gin.RouterGroup, accounts Accounts, contracts *openapi.Reg
 				}
 				c.JSON(http.StatusOK, messageResponse{Message: "Email verified."})
 			}},
-		{"/forgot-password", ratelimit.Policy{RequestsPerSecond: 1, Burst: 2, RequestsPerWindow: 5, Window: time.Hour},
+		{"/forgot-password", forgotPasswordRateLimit, forgotPasswordEmailRateLimit,
 			forgotPasswordContract(resend.Schema), func(c *gin.Context) {
 				input, err := resend.Decode(c)
 				if err != nil {
 					accountError(c, logger, err)
+					return
+				}
+				if !allowEmailRequest(c, input.Email) {
 					return
 				}
 				if err := accounts.ForgotPassword(c.Request.Context(), input.Email); err != nil {
@@ -84,11 +93,14 @@ func Register(router *gin.RouterGroup, accounts Accounts, contracts *openapi.Reg
 				}
 				c.JSON(http.StatusAccepted, messageResponse{Message: "Check your email for a password reset code."})
 			}},
-		{"/reset-password", ratelimit.Policy{RequestsPerSecond: 1, Burst: 3, RequestsPerWindow: 10, Window: time.Minute},
+		{"/reset-password", resetPasswordRateLimit, resetPasswordEmailRateLimit,
 			resetPasswordContract(reset.Schema), func(c *gin.Context) {
 				input, err := reset.Decode(c)
 				if err != nil {
 					accountError(c, logger, err)
+					return
+				}
+				if !allowEmailRequest(c, input.Email) {
 					return
 				}
 				if err := accounts.ResetPassword(c.Request.Context(), input); err != nil {
@@ -97,11 +109,14 @@ func Register(router *gin.RouterGroup, accounts Accounts, contracts *openapi.Reg
 				}
 				c.JSON(http.StatusOK, messageResponse{Message: "Password reset. Log in with your new password."})
 			}},
-		{"/resend-verification", ratelimit.Policy{RequestsPerSecond: 1, Burst: 2, RequestsPerWindow: 5, Window: time.Hour},
+		{"/resend-verification", resendVerificationRateLimit, resendVerificationEmailRateLimit,
 			resendContract(resend.Schema), func(c *gin.Context) {
 				input, err := resend.Decode(c)
 				if err != nil {
 					c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request body"})
+					return
+				}
+				if !allowEmailRequest(c, input.Email) {
 					return
 				}
 				if err := accounts.Resend(c.Request.Context(), input.Email); err != nil {
@@ -115,7 +130,11 @@ func Register(router *gin.RouterGroup, accounts Accounts, contracts *openapi.Reg
 		if err != nil {
 			return err
 		}
-		if err := contracts.Register(group, http.MethodPost, endpoint.path, endpoint.operation, limit.Middleware(enabled), endpoint.handler); err != nil {
+		emailLimit, err := ratelimit.New(endpoint.emailPolicy)
+		if err != nil {
+			return err
+		}
+		if err := contracts.Register(group, http.MethodPost, endpoint.path, endpoint.operation, limit.Middleware(enabled), identityRateLimit(emailLimit, enabled), endpoint.handler); err != nil {
 			return err
 		}
 	}
@@ -123,6 +142,9 @@ func Register(router *gin.RouterGroup, accounts Accounts, contracts *openapi.Reg
 }
 
 func accountError(c *gin.Context, logger *slog.Logger, err error) {
+	if ratelimit.Respond(c, err) {
+		return
+	}
 	if errors.Is(err, ErrEmailRegistered) {
 		c.JSON(http.StatusConflict, errorResponse{Error: err.Error()})
 		return

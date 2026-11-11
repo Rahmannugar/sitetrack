@@ -10,7 +10,6 @@ import (
 	"sitetrack/internal/infra/openapi"
 	"sitetrack/internal/infra/ratelimit"
 	"sitetrack/internal/infra/request"
-	"time"
 )
 
 type projectPath struct {
@@ -67,7 +66,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 		handler      gin.HandlerFunc
 	}
 	endpoints := []endpoint{
-		{"POST", "", createContract(input.Schema, project.Schema), ratelimit.Policy{RequestsPerSecond: 2, Burst: 5, RequestsPerWindow: 60, Window: time.Minute}, func(c *gin.Context) {
+		{"POST", "", createContract(input.Schema, project.Schema), createTaskRateLimit, func(c *gin.Context) {
 			params, err := project.DecodePath(c)
 			if err != nil {
 				taskError(c, logger, ErrInvalid)
@@ -87,7 +86,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 			c.Header("Location", "/projects/"+params.ProjectID+"/tasks/"+result.ID)
 			c.JSON(http.StatusCreated, result)
 		}},
-		{"GET", "", listContract(project.Schema, list.Schema), ratelimit.Policy{RequestsPerSecond: 10, Burst: 20, RequestsPerWindow: 300, Window: time.Minute}, func(c *gin.Context) {
+		{"GET", "", listContract(project.Schema, list.Schema), listTasksRateLimit, func(c *gin.Context) {
 			params, err := project.DecodePath(c)
 			if err != nil {
 				taskError(c, logger, ErrInvalid)
@@ -106,7 +105,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 			}
 			c.JSON(http.StatusOK, result)
 		}},
-		{"GET", "/:task_id", getContract(path.Schema), ratelimit.Policy{RequestsPerSecond: 20, Burst: 40, RequestsPerWindow: 600, Window: time.Minute}, func(c *gin.Context) {
+		{"GET", "/:task_id", getContract(path.Schema), getTaskRateLimit, func(c *gin.Context) {
 			params, err := path.DecodePath(c)
 			if err != nil {
 				taskError(c, logger, ErrInvalid)
@@ -120,7 +119,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 			}
 			c.JSON(http.StatusOK, result)
 		}},
-		{"PUT", "/:task_id", updateContract(input.Schema, path.Schema), ratelimit.Policy{RequestsPerSecond: 2, Burst: 5, RequestsPerWindow: 60, Window: time.Minute}, func(c *gin.Context) {
+		{"PUT", "/:task_id", updateContract(input.Schema, path.Schema), updateTaskRateLimit, func(c *gin.Context) {
 			params, err := path.DecodePath(c)
 			if err != nil {
 				taskError(c, logger, ErrInvalid)
@@ -139,7 +138,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 			}
 			c.JSON(http.StatusOK, result)
 		}},
-		{"DELETE", "/:task_id", removeContract(path.Schema), ratelimit.Policy{RequestsPerSecond: 1, Burst: 3, RequestsPerWindow: 20, Window: time.Minute}, func(c *gin.Context) {
+		{"DELETE", "/:task_id", removeContract(path.Schema), removeTaskRateLimit, func(c *gin.Context) {
 			params, err := path.DecodePath(c)
 			if err != nil {
 				taskError(c, logger, ErrInvalid)
@@ -152,7 +151,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 			}
 			c.Status(http.StatusNoContent)
 		}},
-		{"POST", "/:task_id/dependencies", addDependencyContract(dependency.Schema, path.Schema), ratelimit.Policy{RequestsPerSecond: 2, Burst: 5, RequestsPerWindow: 60, Window: time.Minute}, func(c *gin.Context) {
+		{"POST", "/:task_id/dependencies", addDependencyContract(dependency.Schema, path.Schema), addDependencyRateLimit, func(c *gin.Context) {
 			params, err := path.DecodePath(c)
 			if err != nil {
 				taskError(c, logger, ErrInvalid)
@@ -171,7 +170,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 			}
 			c.JSON(http.StatusCreated, result)
 		}},
-		{"DELETE", "/:task_id/dependencies/:required_task_id", removeDependencyContract(dependencyParams.Schema), ratelimit.Policy{RequestsPerSecond: 2, Burst: 5, RequestsPerWindow: 60, Window: time.Minute}, func(c *gin.Context) {
+		{"DELETE", "/:task_id/dependencies/:required_task_id", removeDependencyContract(dependencyParams.Schema), removeDependencyRateLimit, func(c *gin.Context) {
 			params, err := dependencyParams.DecodePath(c)
 			if err != nil {
 				taskError(c, logger, ErrInvalid)
@@ -184,7 +183,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 			}
 			c.Status(http.StatusNoContent)
 		}},
-		{"GET", "/:task_id/dependencies", dependenciesContract(path.Schema, dependencies.Schema), ratelimit.Policy{RequestsPerSecond: 10, Burst: 20, RequestsPerWindow: 300, Window: time.Minute}, func(c *gin.Context) {
+		{"GET", "/:task_id/dependencies", dependenciesContract(path.Schema, dependencies.Schema), listDependenciesRateLimit, func(c *gin.Context) {
 			params, err := path.DecodePath(c)
 			if err != nil {
 				taskError(c, logger, ErrInvalid)
@@ -203,7 +202,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 			}
 			c.JSON(http.StatusOK, result)
 		}},
-		{"GET", "/:task_id/relationships", relationshipsContract(path.Schema, relationships.Schema), ratelimit.Policy{RequestsPerSecond: 5, Burst: 10, RequestsPerWindow: 120, Window: time.Minute}, func(c *gin.Context) {
+		{"GET", "/:task_id/relationships", relationshipsContract(path.Schema, relationships.Schema), listRelationshipsRateLimit, func(c *gin.Context) {
 			params, err := path.DecodePath(c)
 			if err != nil {
 				taskError(c, logger, ErrInvalid)
@@ -224,7 +223,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 		}},
 	}
 	for _, action := range []string{"start", "done", "reopen"} {
-		endpoints = append(endpoints, endpoint{"POST", "/:task_id/" + action, transitionContract(path.Schema, action), ratelimit.Policy{RequestsPerSecond: 3, Burst: 5, RequestsPerWindow: 90, Window: time.Minute}, func(c *gin.Context) {
+		endpoints = append(endpoints, endpoint{"POST", "/:task_id/" + action, transitionContract(path.Schema, action), taskActionRateLimits[action], func(c *gin.Context) {
 			params, err := path.DecodePath(c)
 			if err != nil {
 				taskError(c, logger, ErrInvalid)
@@ -244,7 +243,11 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 		if err != nil {
 			return err
 		}
-		if err = contracts.Register(group, endpoint.method, endpoint.path, endpoint.operation, limiter.Middleware(enabled), authentication.RequireSession(accounts, logger), endpoint.handler); err != nil {
+		session, err := authentication.RequireRateLimitedSession(accounts, logger, endpoint.policy, enabled)
+		if err != nil {
+			return err
+		}
+		if err = contracts.Register(group, endpoint.method, endpoint.path, endpoint.operation, limiter.Middleware(enabled), session, endpoint.handler); err != nil {
 			return err
 		}
 	}

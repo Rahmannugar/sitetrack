@@ -9,7 +9,6 @@ import (
 	"sitetrack/internal/infra/openapi"
 	"sitetrack/internal/infra/ratelimit"
 	"sitetrack/internal/infra/request"
-	"time"
 )
 
 type invitationPath struct {
@@ -52,7 +51,7 @@ func registerInvitations(router *gin.RouterGroup, service *Service, accounts aut
 		policy       ratelimit.Policy
 		handler      gin.HandlerFunc
 	}{
-		{"POST", "/projects/:id/invitations", inviteContract(invite.Schema, projectPath.Schema), ratelimit.Policy{RequestsPerSecond: 2, Burst: 5, RequestsPerWindow: 60, Window: time.Minute}, func(c *gin.Context) {
+		{"POST", "/projects/:id/invitations", inviteContract(invite.Schema, projectPath.Schema), inviteUserRateLimit, func(c *gin.Context) {
 			path, err := projectPath.DecodePath(c)
 			if err != nil {
 				projectError(c, logger, ErrInvalid)
@@ -71,7 +70,7 @@ func registerInvitations(router *gin.RouterGroup, service *Service, accounts aut
 			}
 			c.JSON(http.StatusCreated, result)
 		}},
-		{"GET", "/projects/:id/invitations", invitationsContract(listing.Schema, projectPath.Schema), ratelimit.Policy{RequestsPerSecond: 10, Burst: 20, RequestsPerWindow: 300, Window: time.Minute}, func(c *gin.Context) {
+		{"GET", "/projects/:id/invitations", invitationsContract(listing.Schema, projectPath.Schema), listInvitationsRateLimit, func(c *gin.Context) {
 			path, err := projectPath.DecodePath(c)
 			if err != nil {
 				projectError(c, logger, ErrInvalid)
@@ -90,7 +89,7 @@ func registerInvitations(router *gin.RouterGroup, service *Service, accounts aut
 			}
 			c.JSON(http.StatusOK, result)
 		}},
-		{"DELETE", "/projects/:id/invitations/:invitation_id", withdrawContract(invitationPath.Schema), ratelimit.Policy{RequestsPerSecond: 2, Burst: 5, RequestsPerWindow: 60, Window: time.Minute}, func(c *gin.Context) {
+		{"DELETE", "/projects/:id/invitations/:invitation_id", withdrawContract(invitationPath.Schema), withdrawInvitationRateLimit, func(c *gin.Context) {
 			path, err := invitationPath.DecodePath(c)
 			if err != nil {
 				projectError(c, logger, ErrInvalid)
@@ -104,7 +103,7 @@ func registerInvitations(router *gin.RouterGroup, service *Service, accounts aut
 			}
 			c.JSON(http.StatusOK, result)
 		}},
-		{"POST", "/invitations/:invitation_id/respond", respondContract(respond.Schema, ownPath.Schema), ratelimit.Policy{RequestsPerSecond: 2, Burst: 5, RequestsPerWindow: 60, Window: time.Minute}, func(c *gin.Context) {
+		{"POST", "/invitations/:invitation_id/respond", respondContract(respond.Schema, ownPath.Schema), respondToInvitationRateLimit, func(c *gin.Context) {
 			path, err := ownPath.DecodePath(c)
 			if err != nil {
 				projectError(c, logger, ErrInvalid)
@@ -128,7 +127,11 @@ func registerInvitations(router *gin.RouterGroup, service *Service, accounts aut
 		if err != nil {
 			return err
 		}
-		if err = contracts.Register(group, endpoint.method, endpoint.path, endpoint.operation, limiter.Middleware(enabled), authentication.RequireSession(accounts, logger), endpoint.handler); err != nil {
+		session, err := authentication.RequireRateLimitedSession(accounts, logger, endpoint.policy, enabled)
+		if err != nil {
+			return err
+		}
+		if err = contracts.Register(group, endpoint.method, endpoint.path, endpoint.operation, limiter.Middleware(enabled), session, endpoint.handler); err != nil {
 			return err
 		}
 	}

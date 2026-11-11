@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -56,7 +55,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 		policy       ratelimit.Policy
 		handler      gin.HandlerFunc
 	}{
-		{http.MethodPost, "", createContract(input.Schema), ratelimit.Policy{RequestsPerSecond: 1, Burst: 3, RequestsPerWindow: 30, Window: time.Minute}, func(c *gin.Context) {
+		{http.MethodPost, "", createContract(input.Schema), createProjectRateLimit, func(c *gin.Context) {
 			value, err := input.Decode(c)
 			if err != nil {
 				projectError(c, logger, ErrInvalid)
@@ -71,7 +70,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 			c.Header("Location", "/projects/"+result.ID)
 			c.JSON(http.StatusCreated, result)
 		}},
-		{http.MethodGet, "", listContract(listing.Schema), ratelimit.Policy{RequestsPerSecond: 10, Burst: 20, RequestsPerWindow: 300, Window: time.Minute}, func(c *gin.Context) {
+		{http.MethodGet, "", listContract(listing.Schema), listProjectsRateLimit, func(c *gin.Context) {
 			value, err := listing.DecodeQuery(c)
 			if err != nil {
 				projectError(c, logger, ErrInvalid)
@@ -85,7 +84,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 			}
 			c.JSON(http.StatusOK, result)
 		}},
-		{http.MethodGet, "/:id", readContract(projectParams.Schema), ratelimit.Policy{RequestsPerSecond: 20, Burst: 40, RequestsPerWindow: 600, Window: time.Minute}, func(c *gin.Context) {
+		{http.MethodGet, "/:id", readContract(projectParams.Schema), getProjectRateLimit, func(c *gin.Context) {
 			path, err := projectParams.DecodePath(c)
 			if err != nil {
 				projectError(c, logger, ErrInvalid)
@@ -99,7 +98,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 			}
 			c.JSON(http.StatusOK, result)
 		}},
-		{http.MethodPut, "/:id", updateContract(input.Schema, projectParams.Schema), ratelimit.Policy{RequestsPerSecond: 2, Burst: 5, RequestsPerWindow: 60, Window: time.Minute}, func(c *gin.Context) {
+		{http.MethodPut, "/:id", updateContract(input.Schema, projectParams.Schema), updateProjectRateLimit, func(c *gin.Context) {
 			path, err := projectParams.DecodePath(c)
 			if err != nil {
 				projectError(c, logger, ErrInvalid)
@@ -118,7 +117,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 			}
 			c.JSON(http.StatusOK, result)
 		}},
-		{http.MethodDelete, "/:id", removeContract(projectParams.Schema), ratelimit.Policy{RequestsPerSecond: 1, Burst: 3, RequestsPerWindow: 20, Window: time.Minute}, func(c *gin.Context) {
+		{http.MethodDelete, "/:id", removeContract(projectParams.Schema), removeProjectRateLimit, func(c *gin.Context) {
 			path, err := projectParams.DecodePath(c)
 			if err != nil {
 				projectError(c, logger, ErrInvalid)
@@ -131,7 +130,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 			}
 			c.Status(http.StatusNoContent)
 		}},
-		{http.MethodGet, "/:id/members", membersContract(members.Schema, projectParams.Schema), ratelimit.Policy{RequestsPerSecond: 10, Burst: 20, RequestsPerWindow: 300, Window: time.Minute}, func(c *gin.Context) {
+		{http.MethodGet, "/:id/members", membersContract(members.Schema, projectParams.Schema), listMembersRateLimit, func(c *gin.Context) {
 			path, err := projectParams.DecodePath(c)
 			if err != nil {
 				projectError(c, logger, ErrInvalid)
@@ -150,7 +149,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 			}
 			c.JSON(http.StatusOK, result)
 		}},
-		{http.MethodPatch, "/:id/members/:user_id", changeMemberContract(member.Schema, memberParams.Schema), ratelimit.Policy{RequestsPerSecond: 2, Burst: 5, RequestsPerWindow: 60, Window: time.Minute}, func(c *gin.Context) {
+		{http.MethodPatch, "/:id/members/:user_id", changeMemberContract(member.Schema, memberParams.Schema), changeMemberRateLimit, func(c *gin.Context) {
 			path, err := memberParams.DecodePath(c)
 			if err != nil {
 				projectError(c, logger, ErrInvalid)
@@ -168,7 +167,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 			}
 			c.Status(http.StatusNoContent)
 		}},
-		{http.MethodDelete, "/:id/members/:user_id", removeMemberContract(memberParams.Schema), ratelimit.Policy{RequestsPerSecond: 2, Burst: 5, RequestsPerWindow: 60, Window: time.Minute}, func(c *gin.Context) {
+		{http.MethodDelete, "/:id/members/:user_id", removeMemberContract(memberParams.Schema), removeMemberRateLimit, func(c *gin.Context) {
 			path, err := memberParams.DecodePath(c)
 			if err != nil {
 				projectError(c, logger, ErrInvalid)
@@ -186,7 +185,11 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 		if err != nil {
 			return err
 		}
-		if err := contracts.Register(group, endpoint.method, endpoint.path, endpoint.operation, limiter.Middleware(enabled), authentication.RequireSession(accounts, logger), endpoint.handler); err != nil {
+		session, err := authentication.RequireRateLimitedSession(accounts, logger, endpoint.policy, enabled)
+		if err != nil {
+			return err
+		}
+		if err := contracts.Register(group, endpoint.method, endpoint.path, endpoint.operation, limiter.Middleware(enabled), session, endpoint.handler); err != nil {
 			return err
 		}
 	}
