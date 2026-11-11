@@ -36,14 +36,7 @@ type ProjectListInput struct {
 	Cursor     string `json:"cursor,omitempty" form:"cursor" binding:"max=4096"`
 	Limit      int    `json:"limit,omitempty" form:"limit,default=20" binding:"min=1,max=100"`
 }
-type Store struct {
-	ID        uuid.UUID `json:"id"`
-	Name      string    `json:"name"`
-	ProjectID string    `json:"project_id,omitempty"`
-	CanManage bool      `json:"can_manage"`
-}
 type CompanyItem struct {
-	StoreID             uuid.UUID `json:"store_id"`
 	MaterialID          uuid.UUID `json:"material_id"`
 	Name                string    `json:"name"`
 	CategoryID          uuid.UUID `json:"category_id"`

@@ -6,15 +6,15 @@ import (
 	"sitetrack/internal/infra/openapi"
 )
 
-var companyExample = json.RawMessage(`{"store_id":"019f2aa0-7000-7000-8000-000000000020","material_id":"019f2aa0-7000-7000-8000-000000000010","name":"Cement, OPC 50 kg bag","category_id":"019f2aa0-7000-7000-8000-000000000011","category_name":"Cement","unit":"bag","quantity":"12.500","reorder_point":"20.000","in_transit_to_projects":"0.000","status":"low_stock","updated_at":"2026-11-11T12:00:00Z"}`)
+var companyExample = json.RawMessage(`{"material_id":"019f2aa0-7000-7000-8000-000000000010","name":"Cement, OPC 50 kg bag","category_id":"019f2aa0-7000-7000-8000-000000000011","category_name":"Cement","unit":"bag","quantity":"12.500","reorder_point":"20.000","in_transit_to_projects":"0.000","status":"low_stock","updated_at":"2026-11-11T12:00:00Z"}`)
 var projectExample = json.RawMessage(`{"store_id":"019f2aa0-7000-7000-8000-000000000002","material_id":"019f2aa0-7000-7000-8000-000000000010","name":"Cement, OPC 50 kg bag","category_id":"019f2aa0-7000-7000-8000-000000000011","category_name":"Cement","unit":"bag","quantity":"8.000","last_delivery_at":"2026-11-11T12:00:00Z","updated_at":"2026-11-11T12:00:00Z"}`)
 
 func quantitySchema() *jsonschema.Schema {
 	return &jsonschema.Schema{Type: "string", Pattern: `^[0-9]{1,15}\.[0-9]{3}$`}
 }
 func itemSchema(company bool) *jsonschema.Schema {
-	schema := &jsonschema.Schema{Type: "object", Required: []string{"store_id", "material_id", "name", "category_id", "category_name", "unit", "quantity", "updated_at"}, Properties: map[string]*jsonschema.Schema{
-		"store_id": {Type: "string", Format: "uuid"}, "material_id": {Type: "string", Format: "uuid"}, "name": {Type: "string"}, "category_id": {Type: "string", Format: "uuid"}, "category_name": {Type: "string"}, "unit": {Type: "string"}, "quantity": quantitySchema(), "updated_at": {Type: "string", Format: "date-time"},
+	schema := &jsonschema.Schema{Type: "object", Required: []string{"material_id", "name", "category_id", "category_name", "unit", "quantity", "updated_at"}, Properties: map[string]*jsonschema.Schema{
+		"material_id": {Type: "string", Format: "uuid"}, "name": {Type: "string"}, "category_id": {Type: "string", Format: "uuid"}, "category_name": {Type: "string"}, "unit": {Type: "string"}, "quantity": quantitySchema(), "updated_at": {Type: "string", Format: "date-time"},
 	}}
 	if company {
 		schema.Required = append(schema.Required, "reorder_point", "in_transit_to_projects", "status")
@@ -22,7 +22,8 @@ func itemSchema(company bool) *jsonschema.Schema {
 		schema.Properties["in_transit_to_projects"] = quantitySchema()
 		schema.Properties["status"] = &jsonschema.Schema{Type: "string", Pattern: "^(out_of_stock|low_stock|available)$"}
 	} else {
-		schema.Required = append(schema.Required, "last_delivery_at")
+		schema.Required = append(schema.Required, "store_id", "last_delivery_at")
+		schema.Properties["store_id"] = &jsonschema.Schema{Type: "string", Format: "uuid"}
 		schema.Properties["last_delivery_at"] = &jsonschema.Schema{Types: []string{"string", "null"}, Format: "date-time"}
 	}
 	return schema
@@ -55,22 +56,6 @@ func operation(id, summary string, body, path, query *jsonschema.Schema, company
 	}
 	return op
 }
-func storeContract(path *jsonschema.Schema, company bool) openapi.Operation {
-	id, summary := "getProjectStore", "View a project store"
-	if company {
-		id, summary = "getCompanyStore", "View the company store"
-	}
-	op := operation(id, summary, nil, path, nil, company)
-	schema := &jsonschema.Schema{Type: "object", Required: []string{"id", "name", "can_manage"}, Properties: map[string]*jsonschema.Schema{"id": {Type: "string", Format: "uuid"}, "name": {Type: "string"}, "can_manage": {Type: "boolean"}}}
-	example := json.RawMessage(`{"id":"019f2aa0-7000-7000-8000-000000000020","name":"Company store","can_manage":true}`)
-	if !company {
-		schema.Required = append(schema.Required, "project_id")
-		schema.Properties["project_id"] = &jsonschema.Schema{Type: "string"}
-		example = json.RawMessage(`{"id":"019f2aa0-7000-7000-8000-000000000002","name":"Riverside Site store","project_id":"PRJ-0001","can_manage":false}`)
-	}
-	op.Responses["200"] = response("Store details and whether you can manage it.", schema, example)
-	return op
-}
 func itemContract(id, summary string, body, path *jsonschema.Schema, company bool) openapi.Operation {
 	op := operation(id, summary, body, path, nil, company)
 	example := projectExample
@@ -89,10 +74,10 @@ func itemContract(id, summary string, body, path *jsonschema.Schema, company boo
 	return op
 }
 func listContract(path, query *jsonschema.Schema, company bool) openapi.Operation {
-	id, summary := "listProjectInventory", "List project store stock"
+	id, summary := "getProjectStore", "View the project store"
 	example := projectExample
 	if company {
-		id, summary = "listCompanyInventory", "List company store stock"
+		id, summary = "getCompanyStore", "View the company store"
 		example = companyExample
 	}
 	op := operation(id, summary, nil, path, query, company)

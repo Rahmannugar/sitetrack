@@ -7,8 +7,6 @@ package inventorydb
 import (
 	"database/sql/driver"
 	"fmt"
-
-	"github.com/google/uuid"
 )
 
 type SitetrackStockStatus string
@@ -52,9 +50,4 @@ func (ns NullSitetrackStockStatus) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.SitetrackStockStatus), nil
-}
-
-type SitetrackCompanyStore struct {
-	ID   uuid.UUID
-	Name string
 }

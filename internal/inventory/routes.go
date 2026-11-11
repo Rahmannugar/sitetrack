@@ -65,15 +65,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 		return err
 	}
 	if err := registerEndpoints(router.Group("/company-store"), []endpoint{
-		{"GET", "", storeContract(nil, true), getCompanyStoreRateLimit, func(c *gin.Context) {
-			result, err := service.CompanyStore(c.Request.Context(), actor(c))
-			if err != nil {
-				inventoryError(c, logger, err)
-				return
-			}
-			c.JSON(http.StatusOK, result)
-		}},
-		{"GET", "/inventory", listContract(nil, companyList.Schema, true), listCompanyStockRateLimit, func(c *gin.Context) {
+		{"GET", "", listContract(nil, companyList.Schema, true), listCompanyStockRateLimit, func(c *gin.Context) {
 			value, err := companyList.DecodeQuery(c)
 			if err != nil {
 				inventoryError(c, logger, ErrInvalid)
@@ -86,7 +78,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 			}
 			c.JSON(http.StatusOK, result)
 		}},
-		{"GET", "/inventory/:material_id", itemContract("getCompanyInventoryItem", "View company stock for a material", nil, item.Schema, true), getCompanyStockRateLimit, func(c *gin.Context) {
+		{"GET", "/:material_id", itemContract("getCompanyInventoryItem", "View company stock for a material", nil, item.Schema, true), getCompanyStockRateLimit, func(c *gin.Context) {
 			path, err := item.DecodePath(c)
 			if err != nil {
 				inventoryError(c, logger, ErrInvalid)
@@ -99,7 +91,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 			}
 			c.JSON(http.StatusOK, result)
 		}},
-		{"POST", "/inventory/:material_id/add-stock", itemContract("addCompanyStock", "Add supplier stock to the company store", amount.Schema, item.Schema, true), addStockRateLimit, func(c *gin.Context) {
+		{"POST", "/:material_id/add-stock", itemContract("addCompanyStock", "Record stock received from a supplier", amount.Schema, item.Schema, true), addStockRateLimit, func(c *gin.Context) {
 			path, err := item.DecodePath(c)
 			if err != nil {
 				inventoryError(c, logger, ErrInvalid)
@@ -117,7 +109,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 			}
 			c.JSON(http.StatusOK, result)
 		}},
-		{"PUT", "/inventory/:material_id/reorder-point", itemContract("setCompanyReorderPoint", "Set a material’s company reorder point", reorder.Schema, item.Schema, true), setReorderPointRateLimit, func(c *gin.Context) {
+		{"PUT", "/:material_id/reorder-point", itemContract("setCompanyReorderPoint", "Set a material’s company reorder point", reorder.Schema, item.Schema, true), setReorderPointRateLimit, func(c *gin.Context) {
 			path, err := item.DecodePath(c)
 			if err != nil {
 				inventoryError(c, logger, ErrInvalid)
@@ -139,20 +131,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 		return err
 	}
 	return registerEndpoints(router.Group("/projects/:id/store"), []endpoint{
-		{"GET", "", storeContract(project.Schema, false), getProjectStoreRateLimit, func(c *gin.Context) {
-			path, err := project.DecodePath(c)
-			if err != nil {
-				inventoryError(c, logger, ErrInvalid)
-				return
-			}
-			result, err := service.ProjectStore(c.Request.Context(), actor(c), path.ID)
-			if err != nil {
-				inventoryError(c, logger, err)
-				return
-			}
-			c.JSON(http.StatusOK, result)
-		}},
-		{"GET", "/inventory", listContract(project.Schema, projectList.Schema, false), listProjectStockRateLimit, func(c *gin.Context) {
+		{"GET", "", listContract(project.Schema, projectList.Schema, false), listProjectStockRateLimit, func(c *gin.Context) {
 			path, err := project.DecodePath(c)
 			if err != nil {
 				inventoryError(c, logger, ErrInvalid)
@@ -170,7 +149,7 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 			}
 			c.JSON(http.StatusOK, result)
 		}},
-		{"GET", "/inventory/:material_id", itemContract("getProjectInventoryItem", "View project stock for a material", nil, projectItem.Schema, false), getProjectStockRateLimit, func(c *gin.Context) {
+		{"GET", "/:material_id", itemContract("getProjectInventoryItem", "View project stock for a material", nil, projectItem.Schema, false), getProjectStockRateLimit, func(c *gin.Context) {
 			path, err := projectItem.DecodePath(c)
 			if err != nil {
 				inventoryError(c, logger, ErrInvalid)

@@ -13,19 +13,18 @@ import (
 )
 
 const addStock = `-- name: AddStock :exec
-INSERT INTO sitetrack.company_inventory(company_store_id,material_id,quantity)
-VALUES($1,$2,$3::text::numeric)
-ON CONFLICT(company_store_id,material_id) DO UPDATE SET quantity=company_inventory.quantity+EXCLUDED.quantity,updated_at=clock_timestamp()
+INSERT INTO sitetrack.company_inventory(material_id,quantity)
+VALUES($1,$2::text::numeric)
+ON CONFLICT(material_id) DO UPDATE SET quantity=company_inventory.quantity+EXCLUDED.quantity,updated_at=clock_timestamp()
 `
 
 type AddStockParams struct {
-	StoreID    uuid.UUID
 	MaterialID uuid.UUID
 	Quantity   string
 }
 
 func (q *Queries) AddStock(ctx context.Context, arg AddStockParams) error {
-	_, err := q.db.Exec(ctx, addStock, arg.StoreID, arg.MaterialID, arg.Quantity)
+	_, err := q.db.Exec(ctx, addStock, arg.MaterialID, arg.Quantity)
 	return err
 }
 
@@ -41,17 +40,11 @@ func (q *Queries) CompanyAccess(ctx context.Context, id uuid.UUID) (bool, error)
 }
 
 const companyItem = `-- name: CompanyItem :one
-SELECT store_id,material_id,name,category_id,category_name,unit,quantity::text,reorder_point::text,in_transit_to_projects::text,status,updated_at
-FROM sitetrack.company_stock WHERE store_id=$1 AND material_id=$2
+SELECT material_id,name,category_id,category_name,unit,quantity::text,reorder_point::text,in_transit_to_projects::text,status,updated_at
+FROM sitetrack.company_stock WHERE material_id=$1
 `
 
-type CompanyItemParams struct {
-	StoreID    uuid.UUID
-	MaterialID uuid.UUID
-}
-
 type CompanyItemRow struct {
-	StoreID             uuid.UUID
 	MaterialID          uuid.UUID
 	Name                string
 	CategoryID          uuid.UUID
@@ -64,11 +57,10 @@ type CompanyItemRow struct {
 	UpdatedAt           pgtype.Timestamptz
 }
 
-func (q *Queries) CompanyItem(ctx context.Context, arg CompanyItemParams) (CompanyItemRow, error) {
-	row := q.db.QueryRow(ctx, companyItem, arg.StoreID, arg.MaterialID)
+func (q *Queries) CompanyItem(ctx context.Context, materialID uuid.UUID) (CompanyItemRow, error) {
+	row := q.db.QueryRow(ctx, companyItem, materialID)
 	var i CompanyItemRow
 	err := row.Scan(
-		&i.StoreID,
 		&i.MaterialID,
 		&i.Name,
 		&i.CategoryID,
@@ -83,57 +75,35 @@ func (q *Queries) CompanyItem(ctx context.Context, arg CompanyItemParams) (Compa
 	return i, err
 }
 
-const companyStore = `-- name: CompanyStore :one
-SELECT id, name FROM sitetrack.company_stores
-`
-
-func (q *Queries) CompanyStore(ctx context.Context) (SitetrackCompanyStore, error) {
-	row := q.db.QueryRow(ctx, companyStore)
-	var i SitetrackCompanyStore
-	err := row.Scan(&i.ID, &i.Name)
-	return i, err
-}
-
-const ensureCompanyStore = `-- name: EnsureCompanyStore :exec
-INSERT INTO sitetrack.company_stores(id,name) VALUES($1,'Company store') ON CONFLICT DO NOTHING
-`
-
-func (q *Queries) EnsureCompanyStore(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, ensureCompanyStore, id)
-	return err
-}
-
 const listCompanyStock = `-- name: ListCompanyStock :many
-SELECT store_id,material_id,name,category_id,category_name,unit,quantity::text,reorder_point::text,in_transit_to_projects::text,status,updated_at,sort_name
+SELECT material_id,name,category_id,category_name,unit,quantity::text,reorder_point::text,in_transit_to_projects::text,status,updated_at,sort_name
 FROM sitetrack.company_stock
-WHERE store_id=$1
-AND ($2::text='' OR lower(name) LIKE lower($2))
-AND ($3::uuid IS NULL OR category_id=$3)
-AND ($4::text='' OR status=NULLIF($4::text,'')::sitetrack.stock_status)
-AND ($5::uuid IS NULL OR
- ($6::text='name' AND
-  (($7::text='asc' AND (sort_name,material_id)>($8::text,$5)) OR
-   ($7::text='desc' AND (sort_name,material_id)<($8::text,$5)))) OR
- ($6::text='quantity' AND
-  (($7::text='asc' AND (quantity,material_id)>($9::text::numeric,$5)) OR
-   ($7::text='desc' AND (quantity,material_id)<($9::text::numeric,$5)))) OR
- ($6::text='status' AND
-  (($7::text='asc' AND (status,material_id)>($10::text::sitetrack.stock_status,$5)) OR
-   ($7::text='desc' AND (status,material_id)<($10::text::sitetrack.stock_status,$5)))))
+WHERE ($1::text='' OR lower(name) LIKE lower($1))
+AND ($2::uuid IS NULL OR category_id=$2)
+AND ($3::text='' OR status=NULLIF($3::text,'')::sitetrack.stock_status)
+AND ($4::uuid IS NULL OR
+ ($5::text='name' AND
+  (($6::text='asc' AND (sort_name,material_id)>($7::text,$4)) OR
+   ($6::text='desc' AND (sort_name,material_id)<($7::text,$4)))) OR
+ ($5::text='quantity' AND
+  (($6::text='asc' AND (quantity,material_id)>($8::text::numeric,$4)) OR
+   ($6::text='desc' AND (quantity,material_id)<($8::text::numeric,$4)))) OR
+ ($5::text='status' AND
+  (($6::text='asc' AND (status,material_id)>($9::text::sitetrack.stock_status,$4)) OR
+   ($6::text='desc' AND (status,material_id)<($9::text::sitetrack.stock_status,$4)))))
 ORDER BY
- CASE WHEN $6::text='name' AND $7::text='asc' THEN sort_name END ASC,
- CASE WHEN $6::text='name' AND $7::text='desc' THEN sort_name END DESC,
- CASE WHEN $6::text='quantity' AND $7::text='asc' THEN quantity END ASC,
- CASE WHEN $6::text='quantity' AND $7::text='desc' THEN quantity END DESC,
- CASE WHEN $6::text='status' AND $7::text='asc' THEN status END ASC,
- CASE WHEN $6::text='status' AND $7::text='desc' THEN status END DESC,
- CASE WHEN $7::text='asc' THEN material_id END ASC,
- CASE WHEN $7::text='desc' THEN material_id END DESC
-LIMIT $11
+ CASE WHEN $5::text='name' AND $6::text='asc' THEN sort_name END ASC,
+ CASE WHEN $5::text='name' AND $6::text='desc' THEN sort_name END DESC,
+ CASE WHEN $5::text='quantity' AND $6::text='asc' THEN quantity END ASC,
+ CASE WHEN $5::text='quantity' AND $6::text='desc' THEN quantity END DESC,
+ CASE WHEN $5::text='status' AND $6::text='asc' THEN status END ASC,
+ CASE WHEN $5::text='status' AND $6::text='desc' THEN status END DESC,
+ CASE WHEN $6::text='asc' THEN material_id END ASC,
+ CASE WHEN $6::text='desc' THEN material_id END DESC
+LIMIT $10
 `
 
 type ListCompanyStockParams struct {
-	StoreID       uuid.UUID
 	Search        string
 	CategoryID    uuid.NullUUID
 	Status        string
@@ -147,7 +117,6 @@ type ListCompanyStockParams struct {
 }
 
 type ListCompanyStockRow struct {
-	StoreID             uuid.UUID
 	MaterialID          uuid.UUID
 	Name                string
 	CategoryID          uuid.UUID
@@ -163,7 +132,6 @@ type ListCompanyStockRow struct {
 
 func (q *Queries) ListCompanyStock(ctx context.Context, arg ListCompanyStockParams) ([]ListCompanyStockRow, error) {
 	rows, err := q.db.Query(ctx, listCompanyStock,
-		arg.StoreID,
 		arg.Search,
 		arg.CategoryID,
 		arg.Status,
@@ -183,7 +151,6 @@ func (q *Queries) ListCompanyStock(ctx context.Context, arg ListCompanyStockPara
 	for rows.Next() {
 		var i ListCompanyStockRow
 		if err := rows.Scan(
-			&i.StoreID,
 			&i.MaterialID,
 			&i.Name,
 			&i.CategoryID,
@@ -367,7 +334,7 @@ func (q *Queries) ProjectItem(ctx context.Context, arg ProjectItemParams) (Proje
 }
 
 const projectStore = `-- name: ProjectStore :one
-SELECT s.id,s.name,p.id AS project_id,COALESCE(m.is_admin,false)::boolean AS is_admin
+SELECT s.id
 FROM sitetrack.project_stores s JOIN sitetrack.projects p ON p.id=s.project_id
 JOIN sitetrack.users u ON u.id=$1
 LEFT JOIN sitetrack.project_memberships m ON m.project_id=p.id AND m.user_id=u.id
@@ -379,38 +346,25 @@ type ProjectStoreParams struct {
 	ProjectID string
 }
 
-type ProjectStoreRow struct {
-	ID        uuid.UUID
-	Name      string
-	ProjectID string
-	IsAdmin   bool
-}
-
-func (q *Queries) ProjectStore(ctx context.Context, arg ProjectStoreParams) (ProjectStoreRow, error) {
+func (q *Queries) ProjectStore(ctx context.Context, arg ProjectStoreParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, projectStore, arg.Actor, arg.ProjectID)
-	var i ProjectStoreRow
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.ProjectID,
-		&i.IsAdmin,
-	)
-	return i, err
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
 }
 
 const setReorderPoint = `-- name: SetReorderPoint :exec
-INSERT INTO sitetrack.company_inventory(company_store_id,material_id,reorder_point)
-VALUES($1,$2,$3::text::numeric)
-ON CONFLICT(company_store_id,material_id) DO UPDATE SET reorder_point=EXCLUDED.reorder_point,updated_at=clock_timestamp()
+INSERT INTO sitetrack.company_inventory(material_id,reorder_point)
+VALUES($1,$2::text::numeric)
+ON CONFLICT(material_id) DO UPDATE SET reorder_point=EXCLUDED.reorder_point,updated_at=clock_timestamp()
 `
 
 type SetReorderPointParams struct {
-	StoreID      uuid.UUID
 	MaterialID   uuid.UUID
 	ReorderPoint string
 }
 
 func (q *Queries) SetReorderPoint(ctx context.Context, arg SetReorderPointParams) error {
-	_, err := q.db.Exec(ctx, setReorderPoint, arg.StoreID, arg.MaterialID, arg.ReorderPoint)
+	_, err := q.db.Exec(ctx, setReorderPoint, arg.MaterialID, arg.ReorderPoint)
 	return err
 }

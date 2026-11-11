@@ -39,17 +39,14 @@ Verify an email address using its OTP.
 
 ## Company store
 
-Add supplier stock to the company store.
-`POST /company-store/inventory/:material_id/add-stock`
-
-List company store stock.
-`GET /company-store/inventory`
+Record stock received from a supplier.
+`POST /company-store/:material_id/add-stock`
 
 Set a material’s company reorder point.
-`PUT /company-store/inventory/:material_id/reorder-point`
+`PUT /company-store/:material_id/reorder-point`
 
 View company stock for a material.
-`GET /company-store/inventory/:material_id`
+`GET /company-store/:material_id`
 
 View the company store.
 `GET /company-store`
@@ -127,14 +124,11 @@ Stream your notification updates.
 
 ## Project store
 
-List project store stock.
-`GET /projects/:id/store/inventory`
-
 View a project store.
 `GET /projects/:id/store`
 
 View project stock for a material.
-`GET /projects/:id/store/inventory/:material_id`
+`GET /projects/:id/store/:material_id`
 
 ## Projects
 

@@ -91,11 +91,7 @@ func (s *Service) CompanyStock(ctx context.Context, actor uuid.UUID, input Compa
 		return CompanyPage{}, err
 	}
 	q := stockdb.New(s.pool)
-	store, err := q.CompanyStore(ctx)
-	if err != nil {
-		return CompanyPage{}, failure(err)
-	}
-	opts, after, category, err := prepare(options{Scope: store.ID.String(), Search: input.Search, Category: input.CategoryID, Status: input.Status, Sort: input.Sort, Order: input.Order}, input.Cursor, input.Limit, true)
+	opts, after, category, err := prepare(options{Scope: "company", Search: input.Search, Category: input.CategoryID, Status: input.Status, Sort: input.Sort, Order: input.Order}, input.Cursor, input.Limit, true)
 	if err != nil {
 		return CompanyPage{}, err
 	}
@@ -106,7 +102,7 @@ func (s *Service) CompanyStock(ctx context.Context, actor uuid.UUID, input Compa
 	if opts.Sort == "status" && after.ID != uuid.Nil {
 		afterStatus = after.Key
 	}
-	rows, err := q.ListCompanyStock(ctx, stockdb.ListCompanyStockParams{StoreID: store.ID, Search: searchPattern(opts.Search), CategoryID: category, Status: opts.Status, AfterID: uuid.NullUUID{UUID: after.ID, Valid: after.ID != uuid.Nil}, SortBy: opts.Sort, SortOrder: opts.Order, AfterName: after.Key, AfterQuantity: afterQuantity, AfterStatus: afterStatus, PageSize: int32(input.Limit + 1)})
+	rows, err := q.ListCompanyStock(ctx, stockdb.ListCompanyStockParams{Search: searchPattern(opts.Search), CategoryID: category, Status: opts.Status, AfterID: uuid.NullUUID{UUID: after.ID, Valid: after.ID != uuid.Nil}, SortBy: opts.Sort, SortOrder: opts.Order, AfterName: after.Key, AfterQuantity: afterQuantity, AfterStatus: afterStatus, PageSize: int32(input.Limit + 1)})
 	if err != nil {
 		return CompanyPage{}, err
 	}
@@ -116,7 +112,7 @@ func (s *Service) CompanyStock(ctx context.Context, actor uuid.UUID, input Compa
 		rows = rows[:input.Limit]
 	}
 	for _, row := range rows {
-		page.Items = append(page.Items, companyItem(stockdb.CompanyItemRow{StoreID: row.StoreID, MaterialID: row.MaterialID, Name: row.Name, CategoryID: row.CategoryID, CategoryName: row.CategoryName, Unit: row.Unit, Quantity: row.Quantity, ReorderPoint: row.ReorderPoint, InTransitToProjects: row.InTransitToProjects, Status: row.Status, UpdatedAt: row.UpdatedAt}))
+		page.Items = append(page.Items, companyItem(stockdb.CompanyItemRow{MaterialID: row.MaterialID, Name: row.Name, CategoryID: row.CategoryID, CategoryName: row.CategoryName, Unit: row.Unit, Quantity: row.Quantity, ReorderPoint: row.ReorderPoint, InTransitToProjects: row.InTransitToProjects, Status: row.Status, UpdatedAt: row.UpdatedAt}))
 	}
 	if more {
 		last := rows[len(rows)-1]
@@ -141,7 +137,7 @@ func (s *Service) ProjectStock(ctx context.Context, actor uuid.UUID, project str
 		return ProjectPage{}, err
 	}
 	defer rollback(tx)
-	opts, after, category, err := prepare(options{Scope: project + ":" + store.ID.String(), Search: input.Search, Category: input.CategoryID, Sort: input.Sort, Order: input.Order}, input.Cursor, input.Limit, false)
+	opts, after, category, err := prepare(options{Scope: project + ":" + store.String(), Search: input.Search, Category: input.CategoryID, Sort: input.Sort, Order: input.Order}, input.Cursor, input.Limit, false)
 	if err != nil {
 		return ProjectPage{}, err
 	}

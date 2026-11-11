@@ -1,17 +1,11 @@
--- name: EnsureCompanyStore :exec
-INSERT INTO sitetrack.company_stores(id,name) VALUES($1,'Company store') ON CONFLICT DO NOTHING;
-
 -- name: CompanyAccess :one
 SELECT role IN ('company_store_manager','superadmin') AS allowed FROM sitetrack.users WHERE id=$1;
-
--- name: CompanyStore :one
-SELECT * FROM sitetrack.company_stores;
 
 -- name: LockProject :one
 SELECT id FROM sitetrack.projects WHERE id=$1 AND deleted_at IS NULL FOR SHARE;
 
 -- name: ProjectStore :one
-SELECT s.id,s.name,p.id AS project_id,COALESCE(m.is_admin,false)::boolean AS is_admin
+SELECT s.id
 FROM sitetrack.project_stores s JOIN sitetrack.projects p ON p.id=s.project_id
 JOIN sitetrack.users u ON u.id=sqlc.arg(actor)
 LEFT JOIN sitetrack.project_memberships m ON m.project_id=p.id AND m.user_id=u.id
@@ -21,28 +15,27 @@ WHERE p.id=sqlc.arg(project_id) AND p.deleted_at IS NULL AND (u.role='superadmin
 SELECT id FROM sitetrack.materials WHERE id=$1 AND deleted_at IS NULL FOR UPDATE;
 
 -- name: AddStock :exec
-INSERT INTO sitetrack.company_inventory(company_store_id,material_id,quantity)
-VALUES(sqlc.arg(store_id),sqlc.arg(material_id),sqlc.arg(quantity)::text::numeric)
-ON CONFLICT(company_store_id,material_id) DO UPDATE SET quantity=company_inventory.quantity+EXCLUDED.quantity,updated_at=clock_timestamp();
+INSERT INTO sitetrack.company_inventory(material_id,quantity)
+VALUES(sqlc.arg(material_id),sqlc.arg(quantity)::text::numeric)
+ON CONFLICT(material_id) DO UPDATE SET quantity=company_inventory.quantity+EXCLUDED.quantity,updated_at=clock_timestamp();
 
 -- name: SetReorderPoint :exec
-INSERT INTO sitetrack.company_inventory(company_store_id,material_id,reorder_point)
-VALUES(sqlc.arg(store_id),sqlc.arg(material_id),sqlc.arg(reorder_point)::text::numeric)
-ON CONFLICT(company_store_id,material_id) DO UPDATE SET reorder_point=EXCLUDED.reorder_point,updated_at=clock_timestamp();
+INSERT INTO sitetrack.company_inventory(material_id,reorder_point)
+VALUES(sqlc.arg(material_id),sqlc.arg(reorder_point)::text::numeric)
+ON CONFLICT(material_id) DO UPDATE SET reorder_point=EXCLUDED.reorder_point,updated_at=clock_timestamp();
 
 -- name: CompanyItem :one
-SELECT store_id,material_id,name,category_id,category_name,unit,quantity::text,reorder_point::text,in_transit_to_projects::text,status,updated_at
-FROM sitetrack.company_stock WHERE store_id=$1 AND material_id=$2;
+SELECT material_id,name,category_id,category_name,unit,quantity::text,reorder_point::text,in_transit_to_projects::text,status,updated_at
+FROM sitetrack.company_stock WHERE material_id=$1;
 
 -- name: ProjectItem :one
 SELECT store_id,material_id,name,category_id,category_name,unit,quantity::text,last_delivery_at,updated_at
 FROM sitetrack.project_stock WHERE project_id=$1 AND material_id=$2;
 
 -- name: ListCompanyStock :many
-SELECT store_id,material_id,name,category_id,category_name,unit,quantity::text,reorder_point::text,in_transit_to_projects::text,status,updated_at,sort_name
+SELECT material_id,name,category_id,category_name,unit,quantity::text,reorder_point::text,in_transit_to_projects::text,status,updated_at,sort_name
 FROM sitetrack.company_stock
-WHERE store_id=sqlc.arg(store_id)
-AND (sqlc.arg(search)::text='' OR lower(name) LIKE lower(sqlc.arg(search)))
+WHERE (sqlc.arg(search)::text='' OR lower(name) LIKE lower(sqlc.arg(search)))
 AND (sqlc.narg(category_id)::uuid IS NULL OR category_id=sqlc.narg(category_id))
 AND (sqlc.arg(status)::text='' OR status=NULLIF(sqlc.arg(status)::text,'')::sitetrack.stock_status)
 AND (sqlc.narg(after_id)::uuid IS NULL OR

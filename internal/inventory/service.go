@@ -78,15 +78,6 @@ func quantity(value string, positive bool) (string, error) {
 	}
 	return fmt.Sprintf("%d.%03d", milli/1000, milli%1000), nil
 }
-func (s *Service) EnsureCompanyStore(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	id, err := uuid.NewV7()
-	if err != nil {
-		return err
-	}
-	return stockdb.New(s.pool).EnsureCompanyStore(ctx, id)
-}
 func (s *Service) companyAccess(ctx context.Context, actor uuid.UUID) error {
 	allowed, err := stockdb.New(s.pool).CompanyAccess(ctx, actor)
 	if err != nil {
@@ -97,49 +88,26 @@ func (s *Service) companyAccess(ctx context.Context, actor uuid.UUID) error {
 	}
 	return nil
 }
-func (s *Service) CompanyStore(ctx context.Context, actor uuid.UUID) (result Store, resultErr error) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	ctx, finish := s.start(ctx, "inventory.company.get", actor)
-	defer func() { finish(resultErr, uuid.Nil) }()
-	if err := s.companyAccess(ctx, actor); err != nil {
-		return Store{}, err
-	}
-	row, err := stockdb.New(s.pool).CompanyStore(ctx)
-	return Store{ID: row.ID, Name: row.Name, CanManage: true}, failure(err)
-}
-func (s *Service) project(ctx context.Context, actor uuid.UUID, project string) (pgx.Tx, *stockdb.Queries, Store, error) {
+func (s *Service) project(ctx context.Context, actor uuid.UUID, project string) (pgx.Tx, *stockdb.Queries, uuid.UUID, error) {
 	trace.SpanFromContext(ctx).SetAttributes(attribute.String("project.id", project))
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return nil, nil, Store{}, err
+		return nil, nil, uuid.Nil, err
 	}
 	q := stockdb.New(tx)
 	if _, err = q.LockProject(ctx, project); err != nil {
 		rollback(tx)
-		return nil, nil, Store{}, failure(err)
+		return nil, nil, uuid.Nil, failure(err)
 	}
-	row, err := q.ProjectStore(ctx, stockdb.ProjectStoreParams{Actor: actor, ProjectID: project})
+	storeID, err := q.ProjectStore(ctx, stockdb.ProjectStoreParams{Actor: actor, ProjectID: project})
 	if err != nil {
 		rollback(tx)
-		return nil, nil, Store{}, failure(err)
+		return nil, nil, uuid.Nil, failure(err)
 	}
-	return tx, q, Store{ID: row.ID, Name: row.Name, ProjectID: row.ProjectID, CanManage: row.IsAdmin}, nil
-}
-func (s *Service) ProjectStore(ctx context.Context, actor uuid.UUID, project string) (result Store, resultErr error) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	ctx, finish := s.start(ctx, "inventory.project.get", actor)
-	defer func() { finish(resultErr, uuid.Nil) }()
-	tx, _, result, err := s.project(ctx, actor, project)
-	if err != nil {
-		return Store{}, err
-	}
-	defer rollback(tx)
-	return result, tx.Commit(ctx)
+	return tx, q, storeID, nil
 }
 func companyItem(row stockdb.CompanyItemRow) CompanyItem {
-	return CompanyItem{StoreID: row.StoreID, MaterialID: row.MaterialID, Name: row.Name, CategoryID: row.CategoryID, CategoryName: row.CategoryName, Unit: row.Unit, Quantity: row.Quantity, ReorderPoint: row.ReorderPoint, InTransitToProjects: row.InTransitToProjects, Status: string(row.Status), UpdatedAt: row.UpdatedAt.Time}
+	return CompanyItem{MaterialID: row.MaterialID, Name: row.Name, CategoryID: row.CategoryID, CategoryName: row.CategoryName, Unit: row.Unit, Quantity: row.Quantity, ReorderPoint: row.ReorderPoint, InTransitToProjects: row.InTransitToProjects, Status: string(row.Status), UpdatedAt: row.UpdatedAt.Time}
 }
 func projectItem(row stockdb.ProjectItemRow) ProjectItem {
 	result := ProjectItem{StoreID: row.StoreID, MaterialID: row.MaterialID, Name: row.Name, CategoryID: row.CategoryID, CategoryName: row.CategoryName, Unit: row.Unit, Quantity: row.Quantity, UpdatedAt: row.UpdatedAt.Time}
@@ -157,11 +125,7 @@ func (s *Service) CompanyItem(ctx context.Context, actor, id uuid.UUID) (result 
 		return CompanyItem{}, err
 	}
 	q := stockdb.New(s.pool)
-	store, err := q.CompanyStore(ctx)
-	if err != nil {
-		return CompanyItem{}, failure(err)
-	}
-	row, err := q.CompanyItem(ctx, stockdb.CompanyItemParams{StoreID: store.ID, MaterialID: id})
+	row, err := q.CompanyItem(ctx, id)
 	return companyItem(row), failure(err)
 }
 func (s *Service) ProjectItem(ctx context.Context, actor uuid.UUID, project string, id uuid.UUID) (result ProjectItem, resultErr error) {
@@ -208,23 +172,19 @@ func (s *Service) change(ctx context.Context, actor, id uuid.UUID, raw string, a
 	}
 	defer rollback(tx)
 	q := stockdb.New(tx)
-	store, err := q.CompanyStore(ctx)
-	if err != nil {
-		return CompanyItem{}, failure(err)
-	}
 	// We lock the material before stock changes to serialize them with unit edits and removal.
 	if _, err := q.LockMaterial(ctx, id); err != nil {
 		return CompanyItem{}, failure(err)
 	}
 	if add {
-		err = q.AddStock(ctx, stockdb.AddStockParams{StoreID: store.ID, MaterialID: id, Quantity: amount})
+		err = q.AddStock(ctx, stockdb.AddStockParams{MaterialID: id, Quantity: amount})
 	} else {
-		err = q.SetReorderPoint(ctx, stockdb.SetReorderPointParams{StoreID: store.ID, MaterialID: id, ReorderPoint: amount})
+		err = q.SetReorderPoint(ctx, stockdb.SetReorderPointParams{MaterialID: id, ReorderPoint: amount})
 	}
 	if err != nil {
 		return CompanyItem{}, failure(err)
 	}
-	row, err := q.CompanyItem(ctx, stockdb.CompanyItemParams{StoreID: store.ID, MaterialID: id})
+	row, err := q.CompanyItem(ctx, id)
 	if err != nil {
 		return CompanyItem{}, err
 	}

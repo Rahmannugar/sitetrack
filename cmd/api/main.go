@@ -78,9 +78,6 @@ func run(ctx context.Context, logger *slog.Logger) (resultErr error) {
 	if err != nil {
 		return err
 	}
-	if err := stock.EnsureCompanyStore(ctx); err != nil {
-		return err
-	}
 	router, err := newRouter(pool, monitoring, accounts, projects.NewService(pool), notificationService, tasks.NewService(pool), catalogue, stock, cfg.RateLimit.Enabled)
 	if err != nil {
 		return err

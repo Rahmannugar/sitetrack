@@ -80,9 +80,6 @@ func inventoryTest(t *testing.T) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := stock.EnsureCompanyStore(ctx); err != nil {
-		t.Fatal(err)
-	}
 	catalogue, err := materials.NewService(pool, monitoring)
 	if err != nil {
 		t.Fatal(err)
@@ -181,16 +178,6 @@ func TestStockExactConcurrentAdditionsReorderAndBounds(t *testing.T) {
 	before, err := f.s.CompanyItem(ctx, f.users[1], m.ID)
 	if err != nil || before.Quantity != "0.000" || before.Status != "out_of_stock" {
 		t.Fatal("missing zero-stock material", before, err)
-	}
-	if before.StoreID.Version() != 7 {
-		t.Fatal("company store identity is not UUID v7")
-	}
-	if err := f.s.EnsureCompanyStore(ctx); err != nil {
-		t.Fatal(err)
-	}
-	var count int
-	if err := f.s.pool.QueryRow(ctx, "SELECT count(*) FROM sitetrack.company_stores").Scan(&count); err != nil || count != 1 {
-		t.Fatal("duplicate company store", err)
 	}
 	var group sync.WaitGroup
 	for range 8 {
@@ -443,21 +430,21 @@ func TestInventoryListsCursorSortsAndProjectAccess(t *testing.T) {
 	if _, err := f.s.ProjectStock(ctx, f.users[0], second.ID, input); !errors.Is(err, ErrInvalid) {
 		t.Fatal("cursor accepted another project", err)
 	}
-	if _, err := f.s.ProjectStore(ctx, f.users[1], p.ID); !errors.Is(err, ErrNotFound) {
+	if _, err := f.s.ProjectStock(ctx, f.users[1], p.ID, ProjectListInput{Sort: "name", Order: "asc", Limit: 20}); !errors.Is(err, ErrNotFound) {
 		t.Fatal("nonmember read project stock", err)
 	}
 	f.exec(t, "INSERT INTO sitetrack.project_memberships(project_id,user_id,is_admin) VALUES($1,$2,false)", p.ID, f.users[1])
-	store, err := f.s.ProjectStore(ctx, f.users[1], p.ID)
-	if err != nil || store.CanManage {
-		t.Fatal("member project store permission wrong", err)
+	memberStock, err := f.s.ProjectStock(ctx, f.users[1], p.ID, ProjectListInput{Sort: "name", Order: "asc", Limit: 20})
+	if err != nil || len(memberStock.Items) != 20 {
+		t.Fatal("member cannot read project stock", err)
 	}
 	promote := true
 	if err := f.projects.ChangeMember(ctx, f.users[0], p.ID, f.users[1], &promote); err != nil {
 		t.Fatal(err)
 	}
-	store, err = f.s.ProjectStore(ctx, f.users[1], p.ID)
-	if err != nil || !store.CanManage {
-		t.Fatal("promotion not reflected", err)
+	memberStock, err = f.s.ProjectStock(ctx, f.users[1], p.ID, ProjectListInput{Sort: "name", Order: "asc", Limit: 20})
+	if err != nil || len(memberStock.Items) != 20 {
+		t.Fatal("promoted member cannot read project stock", err)
 	}
 	if err := f.projects.ChangeMember(ctx, f.users[0], p.ID, f.users[1], nil); err != nil {
 		t.Fatal(err)
@@ -476,6 +463,7 @@ func TestInventoryHTTPPermissionsContractsAndTelemetry(t *testing.T) {
 	for i := range 23 {
 		item = f.material(t, c.ID, fmt.Sprintf(" HTTP %02d", i))
 	}
+	f.exec(t, "INSERT INTO sitetrack.project_inventory(project_store_id,material_id,quantity) VALUES($1,$2,2.125)", p.StoreID, item.ID)
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	registry := openapi.New()
@@ -509,8 +497,8 @@ func TestInventoryHTTPPermissionsContractsAndTelemetry(t *testing.T) {
 		}
 		return response
 	}
-	base := "/company-store/inventory/" + item.ID.String()
-	for _, path := range []string{"/company-store", "/company-store/inventory", base} {
+	base := "/company-store/" + item.ID.String()
+	for _, path := range []string{"/company-store", base} {
 		call("GET", path, "", "", 401)
 		call("GET", path, tokens[0], "", 403)
 		call("GET", path, tokens[1], "", 200)
@@ -520,26 +508,30 @@ func TestInventoryHTTPPermissionsContractsAndTelemetry(t *testing.T) {
 	call("POST", base+"/add-stock", tokens[1], `{"quantity":0.125}`, 400)
 	call("POST", base+"/add-stock", tokens[1], `{"quantity":"0.125"}`, 200)
 	call("PUT", base+"/reorder-point", tokens[2], `{"reorder_point":"1"}`, 200)
-	response := call("GET", "/company-store/inventory", tokens[1], "", 200)
+	response := call("GET", "/company-store", tokens[1], "", 200)
 	var page CompanyPage
 	if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil || len(page.Items) != 20 || page.NextCursor == "" {
 		t.Fatal("HTTP default page incorrect", err)
 	}
 	for _, query := range []string{"?limit=101", "?limit=0", "?status=invalid", "?cursor=bad", "?sort=invalid", "?category_id=bad"} {
-		call("GET", "/company-store/inventory"+query, tokens[1], "", 400)
+		call("GET", "/company-store"+query, tokens[1], "", 400)
 	}
-	call("GET", "/company-store/inventory/not-an-id", tokens[1], "", 400)
+	call("GET", "/company-store/not-an-id", tokens[1], "", 400)
 	projectBase := "/projects/" + p.ID + "/store"
-	for _, path := range []string{projectBase, projectBase + "/inventory", projectBase + "/inventory/" + item.ID.String()} {
+	for _, path := range []string{projectBase, projectBase + "/" + item.ID.String()} {
 		denied := call("GET", path, tokens[1], "", 404)
 		missing := call("GET", strings.Replace(path, p.ID, "PRJ-0000", 1), tokens[1], "", 404)
 		if denied.Body.String() != missing.Body.String() {
 			t.Fatal("stock resource leaked project existence")
 		}
 	}
-	call("GET", projectBase, tokens[0], "", 200)
-	call("GET", projectBase+"/inventory", tokens[0], "", 200)
-	call("POST", projectBase+"/inventory/"+item.ID.String()+"/add-stock", tokens[0], `{"quantity":"1"}`, 404)
+	projectResponse := call("GET", projectBase, tokens[0], "", 200)
+	var projectPage ProjectPage
+	if err := json.Unmarshal(projectResponse.Body.Bytes(), &projectPage); err != nil || len(projectPage.Items) != 1 || projectPage.Items[0].Quantity != "2.125" || strings.Contains(projectResponse.Body.String(), "can_manage") {
+		t.Fatal("project store did not return stock", err)
+	}
+	call("GET", projectBase, tokens[2], "", 200)
+	call("POST", projectBase+"/"+item.ID.String()+"/add-stock", tokens[0], `{"quantity":"1"}`, 404)
 	f.exec(t, "UPDATE sitetrack.users SET role='user' WHERE id=$1", f.users[1])
 	call("POST", base+"/add-stock", tokens[1], `{"quantity":"1"}`, 403)
 	raw, err := registry.JSON()
@@ -550,8 +542,14 @@ func TestInventoryHTTPPermissionsContractsAndTelemetry(t *testing.T) {
 	if err := json.Unmarshal(raw, &document); err != nil {
 		t.Fatal(err)
 	}
-	if len(document.Paths) != 8 {
+	if len(document.Paths) != 6 {
 		t.Fatal("missing inventory routes", len(document.Paths))
+	}
+	if strings.Contains(string(raw), "can_manage") || strings.Contains(string(raw), "/inventory") {
+		t.Fatal("obsolete store contract remains")
+	}
+	if strings.Contains(response.Body.String(), "store_id") || strings.Contains(response.Body.String(), "can_manage") {
+		t.Fatal("company stock returned store metadata")
 	}
 	for _, methods := range document.Paths {
 		for _, op := range methods {
