@@ -8,11 +8,12 @@ import (
 )
 
 var (
-	ErrStock     = errors.New("project store still has stock or goods in transit")
-	ErrNotFound  = errors.New("project or member not found")
-	ErrForbidden = errors.New("project admin required")
-	ErrLastAdmin = errors.New("project must retain at least one admin")
-	ErrInvalid   = errors.New("invalid project request")
+	ErrStock          = errors.New("project store still has stock or goods in transit")
+	ErrNotFound       = errors.New("project or member not found")
+	ErrForbidden      = errors.New("project admin required")
+	ErrLastAdmin      = errors.New("project must retain at least one admin")
+	ErrSelfMembership = errors.New("project admins cannot demote or remove themselves")
+	ErrInvalid        = errors.New("invalid project request")
 )
 
 type Input struct {

@@ -210,6 +210,8 @@ func projectError(c *gin.Context, logger *slog.Logger, err error) {
 		code, message = http.StatusForbidden, ErrForbidden.Error()
 	case errors.Is(err, ErrStock):
 		code, message = http.StatusConflict, ErrStock.Error()
+	case errors.Is(err, ErrSelfMembership):
+		code, message = http.StatusConflict, ErrSelfMembership.Error()
 	case errors.Is(err, ErrLastAdmin):
 		code, message = http.StatusConflict, ErrLastAdmin.Error()
 	case errors.Is(err, context.DeadlineExceeded):

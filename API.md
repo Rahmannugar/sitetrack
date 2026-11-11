@@ -138,7 +138,7 @@ View project stock for a material.
 
 ## Projects
 
-Change a member's project admin status.
+Change another member's project admin status.
 `PATCH /projects/:id/members/:user_id`
 
 Create a project.
@@ -150,7 +150,7 @@ List project members.
 List projects.
 `GET /projects`
 
-Remove a project member.
+Remove another project member.
 `DELETE /projects/:id/members/:user_id`
 
 Remove a project.

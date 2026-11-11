@@ -247,13 +247,25 @@ func TestProjectAccessAndMembershipChanges(t *testing.T) {
 	if err := f.s.ChangeMember(ctx, f.users[0], p.ID, f.users[1], &admin); err != nil {
 		t.Fatal(err)
 	}
+	for _, actor := range f.users[:2] {
+		demote := false
+		for _, value := range []*bool{nil, &demote} {
+			if err := f.s.ChangeMember(ctx, actor, p.ID, actor, value); !errors.Is(err, ErrSelfMembership) {
+				t.Fatalf("self membership change accepted: %v", err)
+			}
+		}
+		current, err := f.s.Get(ctx, actor, p.ID)
+		if err != nil || !current.IsAdmin {
+			t.Fatal("rejected self change altered membership")
+		}
+	}
 	if err := f.s.ChangeMember(ctx, f.users[1], p.ID, f.users[0], nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.s.Get(ctx, f.users[0], p.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatal("removed member retained access")
 	}
-	if err := f.s.ChangeMember(ctx, f.users[1], p.ID, f.users[1], nil); !errors.Is(err, ErrLastAdmin) {
+	if err := f.s.ChangeMember(ctx, f.users[1], p.ID, f.users[1], nil); !errors.Is(err, ErrSelfMembership) {
 		t.Fatal("last admin removed")
 	}
 	if _, err := f.s.pool.Exec(ctx, "UPDATE sitetrack.users SET role='user' WHERE id=$1", f.users[2]); err != nil {
@@ -272,20 +284,25 @@ func TestConcurrentAdminChangesAndDatabaseConstraint(t *testing.T) {
 		f.add(t, p.ID, 1, true)
 		start := make(chan struct{})
 		results := make(chan error, 2)
-		for _, actor := range f.users[:2] {
-			go func(actor uuid.UUID) {
+		for index, actor := range f.users[:2] {
+			target := f.users[1-index]
+			go func(actor, target uuid.UUID) {
 				<-start
 				var value *bool
 				if !remove {
 					demote := false
 					value = &demote
 				}
-				results <- f.s.ChangeMember(ctx, actor, p.ID, actor, value)
-			}(actor)
+				results <- f.s.ChangeMember(ctx, actor, p.ID, target, value)
+			}(actor, target)
 		}
 		close(start)
 		a, b := <-results, <-results
-		if !((a == nil && errors.Is(b, ErrLastAdmin)) || (b == nil && errors.Is(a, ErrLastAdmin))) {
+		denied := ErrForbidden
+		if remove {
+			denied = ErrNotFound
+		}
+		if !((a == nil && errors.Is(b, denied)) || (b == nil && errors.Is(a, denied))) {
 			t.Fatalf("unexpected admin race: %v / %v", a, b)
 		}
 		var admins int
@@ -408,6 +425,14 @@ func TestProjectHTTPContractsAndImmediateRevocation(t *testing.T) {
 	var p Project
 	if err := json.Unmarshal(w.Body.Bytes(), &p); err != nil {
 		t.Fatal(err)
+	}
+	for _, attempt := range []struct{ method, body string }{
+		{"PATCH", `{"is_admin":false}`}, {"DELETE", ""},
+	} {
+		w := perform(router, attempt.method, "/projects/"+p.ID+"/members/"+f.users[0].String(), adminToken, attempt.body)
+		if w.Code != 409 || !strings.Contains(w.Body.String(), ErrSelfMembership.Error()) {
+			t.Fatalf("self membership response: %d %s", w.Code, w.Body)
+		}
 	}
 	for _, path := range []string{"/projects/" + p.ID, "/projects/" + p.ID + "/members"} {
 		if w := perform(router, "GET", path, "", ""); w.Code != 401 {

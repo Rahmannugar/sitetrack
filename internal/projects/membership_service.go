@@ -57,6 +57,9 @@ func (s *Service) ChangeMember(ctx context.Context, actor uuid.UUID, id string, 
 		return err
 	}
 	defer rollback(tx)
+	if actor == target && (admin == nil || !*admin) {
+		return ErrSelfMembership
+	}
 	member, err := q.GetMember(ctx, projectdb.GetMemberParams{ProjectID: id, UserID: target})
 	if err != nil {
 		return notFound(err)

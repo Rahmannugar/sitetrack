@@ -91,14 +91,21 @@ func membersContract(query, path *jsonschema.Schema) openapi.Operation {
 	return op
 }
 func changeMemberContract(body, path *jsonschema.Schema) openapi.Operation {
-	op := projectOperation("changeProjectMember", "Change an existing member's admin status", body, path, true)
+	op := projectOperation("changeProjectMember", "Change another member's admin status", body, path, true)
 	op.Responses["204"] = openapi.Response{Description: "Admin status updated. This operation cannot add members."}
-	op.Responses["409"] = response("The last admin cannot be demoted.", errorSchema(), json.RawMessage(`{"error":"project must retain at least one admin"}`))
+	op.Responses["409"] = membershipConflictResponse()
 	return op
 }
 func removeMemberContract(path *jsonschema.Schema) openapi.Operation {
-	op := projectOperation("removeProjectMember", "Remove an existing project member", nil, path, true)
+	op := projectOperation("removeProjectMember", "Remove another project member", nil, path, true)
 	op.Responses["204"] = openapi.Response{Description: "Member removed."}
-	op.Responses["409"] = response("The last admin cannot be removed.", errorSchema(), json.RawMessage(`{"error":"project must retain at least one admin"}`))
+	op.Responses["409"] = membershipConflictResponse()
 	return op
+}
+
+func membershipConflictResponse() openapi.Response {
+	return openapi.Response{Description: "Admins cannot demote or remove themselves. The project must retain an admin.", Content: map[string]openapi.MediaType{"application/json": {Schema: errorSchema(), Examples: map[string]openapi.Example{
+		"self_membership": {Summary: "Cannot demote or remove yourself", Value: json.RawMessage(`{"error":"project admins cannot demote or remove themselves"}`)},
+		"last_admin":      {Summary: "Project must retain an admin", Value: json.RawMessage(`{"error":"project must retain at least one admin"}`)},
+	}}}}
 }
