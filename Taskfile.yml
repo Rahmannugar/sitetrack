@@ -21,6 +21,18 @@ tasks:
     cmds:
       - go -C tools tool sqlc generate -f ../sqlc.yaml
 
+  models:
+    desc: Check bounded Regel models with TLC and export TLA files
+    preconditions:
+      - sh: '"${REGEL_JAVA:-java}" -version >/dev/null 2>&1'
+        msg: Set REGEL_JAVA to a Java 21+ executable or put Java on PATH
+    env:
+      REGEL_TLA2TOOLS: '{{.ROOT_DIR}}/bin/models/tla2tools.jar'
+      SITETRACK_MODEL_OUTPUT: '{{.ROOT_DIR}}/bin/models'
+    cmds:
+      - sh tools/models/setup.sh "{{.ROOT_DIR}}/bin/models/tla2tools.jar"
+      - go -C tools test ./models -count=1 -v -timeout=10m
+
   test-integration:
     desc: Run database tests using SITETRACK_TEST_DATABASE_URL
     preconditions:
@@ -64,7 +76,7 @@ tasks:
   format:
     desc: Format Go source
     cmds:
-      - gofmt -w cmd internal
+      - gofmt -w cmd internal tools/models
 
   test:
     desc: Run Go tests
@@ -79,8 +91,9 @@ tasks:
   check:
     desc: Check formatting, tests, vet, compilation and Compose configuration
     cmds:
-      - test -z "$(gofmt -l cmd internal)"
+      - test -z "$(gofmt -l cmd internal tools/models)"
       - go test ./...
       - go vet ./...
+      - go -C tools vet ./models
       - go build ./...
       - docker compose config --quiet
