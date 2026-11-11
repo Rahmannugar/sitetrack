@@ -95,8 +95,8 @@ func (ns NullSitetrackTaskStatus) Value() (driver.Value, error) {
 }
 
 type SitetrackTaskDependency struct {
-	ProjectID          string
-	DependentTaskID    string
-	PrerequisiteTaskID string
-	Status             SitetrackDependencyStatus
+	ProjectID       string
+	DependentTaskID string
+	RequiredTaskID  string
+	Status          SitetrackDependencyStatus
 }

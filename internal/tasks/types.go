@@ -7,9 +7,9 @@ import (
 
 var (
 	ErrForbidden = errors.New("project admin required")
-	ErrNotFound = errors.New("project or task not found")
-	ErrInvalid  = errors.New("invalid task request")
-	ErrConflict = errors.New("task change conflicts with current state")
+	ErrNotFound  = errors.New("project or task not found")
+	ErrInvalid   = errors.New("invalid task request")
+	ErrConflict  = errors.New("task change conflicts with current state")
 )
 
 type Input struct {
@@ -50,10 +50,10 @@ type Page struct {
 	NextCursor string `json:"next_cursor"`
 }
 type DependencyInput struct {
-	PrerequisiteID string `json:"prerequisite_id" binding:"required,max=64"`
+	RequiredTaskID string `json:"required_task_id" binding:"required,max=64"`
 }
 type Dependency struct {
-	PrerequisiteID string `json:"prerequisite_id"`
+	RequiredTaskID string `json:"required_task_id"`
 	Name           string `json:"name"`
 	Status         string `json:"status"`
 	TaskStatus     string `json:"task_status"`
@@ -67,7 +67,7 @@ type DependencyListInput struct {
 	Limit  int    `json:"limit,omitempty" form:"limit,default=20" binding:"min=1,max=100"`
 }
 type RelationshipInput struct {
-	Direction string `json:"direction,omitempty" form:"direction,default=prerequisites" binding:"oneof=prerequisites dependents"`
+	Direction string `json:"direction,omitempty" form:"direction,default=dependencies" binding:"oneof=dependencies dependents"`
 	Cursor    string `json:"cursor,omitempty" form:"cursor" binding:"max=1024"`
 	Limit     int    `json:"limit,omitempty" form:"limit,default=20" binding:"min=1,max=100"`
 }

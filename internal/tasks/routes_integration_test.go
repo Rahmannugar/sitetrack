@@ -90,8 +90,8 @@ func TestTaskHTTPAccessValidationPaginationAndContracts(t *testing.T) {
 	if _, err := f.s.pool.Exec(ctx, "INSERT INTO sitetrack.project_memberships(project_id,user_id,is_admin) VALUES($1,$2,false)", p, f.users[1]); err != nil {
 		t.Fatal(err)
 	}
-	if response = perform(router, "POST", base+"/"+root.ID+"/start", outsider, ""); response.Code != 200 {
-		t.Fatal("ordinary member cannot start task", response.Body)
+	if response = perform(router, "POST", base+"/"+root.ID+"/start", outsider, ""); response.Code != 403 {
+		t.Fatal("ordinary member started a task", response.Body)
 	}
 	if err := f.projects.ChangeMember(ctx, f.users[0], p, f.users[1], nil); err != nil {
 		t.Fatal(err)
@@ -133,9 +133,9 @@ func TestTaskFiltersDependencyPaginationAndProjectSorts(t *testing.T) {
 	f := taskTest(t)
 	ctx := context.Background()
 	p := f.project(t, "Dependency Pages")
-	target := f.create(t, p, "Many prerequisites")
+	target := f.create(t, p, "Many dependencies")
 	for range 22 {
-		source := f.create(t, p, "Prerequisite")
+		source := f.create(t, p, "Dependency")
 		f.link(t, p, target.ID, source.ID)
 	}
 	current, err := f.s.Get(ctx, f.users[0], p, target.ID)
@@ -210,5 +210,93 @@ func TestTaskFiltersDependencyPaginationAndProjectSorts(t *testing.T) {
 	var edges int
 	if err = f.s.pool.QueryRow(ctx, "SELECT count(*) FROM sitetrack.task_dependencies WHERE dependent_task_id=$1", target.ID).Scan(&edges); err != nil || edges != 0 {
 		t.Fatal("removal left outgoing dependency rows")
+	}
+}
+
+func TestTaskWritesRequireProjectAdminAndActionsFollowMembership(t *testing.T) {
+	f := taskTest(t)
+	ctx := context.Background()
+	p := f.project(t, "Task Permissions")
+	a, b := f.create(t, p, "First Task"), f.create(t, p, "Second Task")
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	registry := openapi.New()
+	if err := Register(router.Group(""), f.s, f.accounts, registry, false, slog.New(slog.NewTextHandler(io.Discard, nil))); err != nil {
+		t.Fatal(err)
+	}
+	admin, member, super := token(t, f, 0), token(t, f, 1), token(t, f, 2)
+	base := "/projects/" + p + "/tasks"
+	body := `{"name":"Updated Task","start_date":"2000-01-01","end_date":"2000-02-01"}`
+	dependency := `{"required_task_id":"` + a.ID + `"}`
+	writes := []struct{ method, path, body string }{
+		{"POST", base, body}, {"PUT", base + "/" + a.ID, body}, {"DELETE", base + "/" + a.ID, ""},
+		{"POST", base + "/" + a.ID + "/start", ""}, {"POST", base + "/" + a.ID + "/done", ""}, {"POST", base + "/" + a.ID + "/reopen", ""},
+		{"POST", base + "/" + b.ID + "/dependencies", dependency}, {"DELETE", base + "/" + b.ID + "/dependencies/" + a.ID, ""},
+	}
+	for _, request := range writes {
+		if response := perform(router, request.method, request.path, member, request.body); response.Code != 404 {
+			t.Fatal("nonmember write exposed project", request.path, response.Code, response.Body)
+		}
+	}
+	if _, err := f.s.pool.Exec(ctx, "INSERT INTO sitetrack.project_memberships(project_id,user_id,is_admin) VALUES($1,$2,false)", p, f.users[1]); err != nil {
+		t.Fatal(err)
+	}
+	for _, jwt := range []string{member, super} {
+		for _, request := range writes {
+			if response := perform(router, request.method, request.path, jwt, request.body); response.Code != 403 {
+				t.Fatal("non-admin write accepted", request.path, response.Code, response.Body)
+			}
+		}
+		for _, path := range []string{base, base + "/" + a.ID, base + "/" + b.ID + "/dependencies", base + "/" + b.ID + "/relationships"} {
+			if response := perform(router, "GET", path, jwt, ""); response.Code != 200 {
+				t.Fatal("read rejected", path, response.Code, response.Body)
+			}
+		}
+		response := perform(router, "GET", base+"/"+a.ID, jwt, "")
+		var task Task
+		if err := json.Unmarshal(response.Body.Bytes(), &task); err != nil || len(task.AllowedActions) != 0 {
+			t.Fatal("non-admin received actions", err, task.AllowedActions)
+		}
+		response = perform(router, "GET", base, jwt, "")
+		var page Page
+		if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil {
+			t.Fatal(err)
+		}
+		for _, task := range page.Items {
+			if len(task.AllowedActions) != 0 {
+				t.Fatal("list exposed admin actions")
+			}
+		}
+	}
+	trueValue, falseValue := true, false
+	if err := f.projects.ChangeMember(ctx, f.users[0], p, f.users[1], &trueValue); err != nil {
+		t.Fatal(err)
+	}
+	response := perform(router, "GET", base+"/"+a.ID, member, "")
+	var task Task
+	if err := json.Unmarshal(response.Body.Bytes(), &task); err != nil || len(task.AllowedActions) != 1 || task.AllowedActions[0] != "start" {
+		t.Fatal("promotion did not update actions", err, task.AllowedActions)
+	}
+	if response := perform(router, "PUT", base+"/"+a.ID, member, body); response.Code != 200 {
+		t.Fatal("promoted admin cannot edit task", response.Code, response.Body)
+	}
+	if err := f.projects.ChangeMember(ctx, f.users[0], p, f.users[1], &falseValue); err != nil {
+		t.Fatal(err)
+	}
+	if response := perform(router, "POST", base+"/"+a.ID+"/start", member, ""); response.Code != 403 {
+		t.Fatal("demoted admin kept write access", response.Code)
+	}
+	for _, step := range []struct {
+		method, path, body string
+		status             int
+	}{
+		{"POST", base, body, 201}, {"PUT", base + "/" + a.ID, body, 200},
+		{"POST", base + "/" + b.ID + "/dependencies", dependency, 201}, {"DELETE", base + "/" + b.ID + "/dependencies/" + a.ID, "", 204},
+		{"POST", base + "/" + a.ID + "/start", "", 200}, {"POST", base + "/" + a.ID + "/done", "", 200},
+		{"POST", base + "/" + a.ID + "/reopen", "", 200}, {"DELETE", base + "/" + a.ID, "", 204},
+	} {
+		if response := perform(router, step.method, step.path, admin, step.body); response.Code != step.status {
+			t.Fatal("admin action failed", step.path, response.Code, response.Body)
+		}
 	}
 }

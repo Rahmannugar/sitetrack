@@ -124,7 +124,7 @@ func (s *Service) Login(ctx context.Context, input LoginInput) (TokenPair, error
 	}
 	return TokenPair{AccessToken: access.Token, AccessTokenExpiresAt: access.ExpiresAt,
 		RefreshToken: refresh.Token, RefreshTokenExpiresAt: refresh.Record.ExpiresAt, TokenType: "Bearer",
-		User: Profile{ID: current.ID, Name: current.Name, Email: current.Email, Role: current.Role, EmailVerified: current.EmailVerified},
+		User: Profile{ID: current.ID, Name: current.Name, Email: current.Email, Role: string(current.Role), EmailVerified: current.EmailVerified},
 	}, nil
 }
 
@@ -213,5 +213,5 @@ func (s *Service) Logout(ctx context.Context, principal Principal) error {
 }
 
 func profile(row authdb.GetCurrentSessionRow) Profile {
-	return Profile{ID: row.UserID, Name: row.Name, Email: row.Email, Role: row.Role, EmailVerified: row.EmailVerified}
+	return Profile{ID: row.UserID, Name: row.Name, Email: row.Email, Role: string(row.Role), EmailVerified: row.EmailVerified}
 }

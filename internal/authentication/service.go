@@ -92,7 +92,7 @@ func (s *Service) Signup(ctx context.Context, input SignupInput) error {
 	}
 	defer rollback(tx)
 	_, err = authdb.New(tx).CreateUser(ctx, authdb.CreateUserParams{
-		ID: id, Name: input.Name, Email: email, PasswordHash: hash, Role: input.Role,
+		ID: id, Name: input.Name, Email: email, PasswordHash: hash, Role: authdb.SitetrackAppRole(input.Role),
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrEmailRegistered

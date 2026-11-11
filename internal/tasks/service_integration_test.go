@@ -126,9 +126,9 @@ func (f *fixture) action(t *testing.T, project, id, action string) Task {
 	}
 	return result
 }
-func (f *fixture) link(t *testing.T, project, dependent, prerequisite string) Dependency {
+func (f *fixture) link(t *testing.T, project, dependent, dependency string) Dependency {
 	t.Helper()
-	result, err := f.s.AddDependency(context.Background(), f.users[0], project, dependent, prerequisite)
+	result, err := f.s.AddDependency(context.Background(), f.users[0], project, dependent, dependency)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +209,7 @@ func TestChainTransitionsSynchronizeStoredDependenciesAndSummaries(t *testing.T)
 	}
 	f.action(t, p, b.ID, "start")
 	if _, err = f.s.Transition(ctx, f.users[0], p, a.ID, "reopen"); !errors.Is(err, ErrConflict) {
-		t.Fatal("prerequisite reopened under started dependent")
+		t.Fatal("dependency reopened under started dependent")
 	}
 	f.action(t, p, b.ID, "done")
 	f.action(t, p, b.ID, "reopen")
@@ -255,12 +255,12 @@ func TestDependencyGraphRejectsCyclesCrossProjectAndStartedEdits(t *testing.T) {
 	if _, err := f.s.AddDependency(ctx, f.users[0], p, c.ID, foreign.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatal("cross-project dependency accepted")
 	}
-	page, err := f.s.Relationships(ctx, f.users[0], p, c.ID, RelationshipInput{Direction: "prerequisites", Limit: 2})
+	page, err := f.s.Relationships(ctx, f.users[0], p, c.ID, RelationshipInput{Direction: "dependencies", Limit: 2})
 	if err != nil || len(page.Items) != 2 || page.NextCursor == "" {
 		t.Fatal("relationship page failed", err)
 	}
 	all := append([]Relationship{}, page.Items...)
-	last, err := f.s.Relationships(ctx, f.users[0], p, c.ID, RelationshipInput{Direction: "prerequisites", Limit: 2, Cursor: page.NextCursor})
+	last, err := f.s.Relationships(ctx, f.users[0], p, c.ID, RelationshipInput{Direction: "dependencies", Limit: 2, Cursor: page.NextCursor})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,17 +283,17 @@ func TestDependencyGraphRejectsCyclesCrossProjectAndStartedEdits(t *testing.T) {
 	fresh := f.create(t, p, "Started Task")
 	f.action(t, p, fresh.ID, "start")
 	if _, err = f.s.AddDependency(ctx, f.users[0], p, fresh.ID, a.ID); !errors.Is(err, ErrConflict) {
-		t.Fatal("started task gained unfinished prerequisite")
+		t.Fatal("started task gained unfinished dependency")
 	}
 	f.action(t, p, a.ID, "start")
 	f.action(t, p, a.ID, "done")
 	if edge, err := f.s.AddDependency(ctx, f.users[0], p, fresh.ID, a.ID); err != nil || edge.Status != "satisfied" {
-		t.Fatal("completed prerequisite could not be linked", err)
+		t.Fatal("completed dependency could not be linked", err)
 	}
 	if err = f.s.RemoveDependency(ctx, f.users[0], p, c.ID, a.ID); err != nil {
 		t.Fatal(err)
 	}
-	allPaths, err := f.s.Relationships(ctx, f.users[0], p, c.ID, RelationshipInput{Direction: "prerequisites", Limit: 20})
+	allPaths, err := f.s.Relationships(ctx, f.users[0], p, c.ID, RelationshipInput{Direction: "dependencies", Limit: 20})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -302,11 +302,11 @@ func TestDependencyGraphRejectsCyclesCrossProjectAndStartedEdits(t *testing.T) {
 			t.Fatal("indirect shortest distance is wrong")
 		}
 	}
-	if _, err = f.s.pool.Exec(ctx, "UPDATE sitetrack.task_dependencies SET status='waiting' WHERE prerequisite_task_id=$1", a.ID); err != nil {
+	if _, err = f.s.pool.Exec(ctx, "UPDATE sitetrack.task_dependencies SET status='waiting' WHERE required_task_id=$1", a.ID); err != nil {
 		t.Fatal(err)
 	}
 	var status string
-	if err = f.s.pool.QueryRow(ctx, "SELECT status FROM sitetrack.task_dependencies WHERE dependent_task_id=$1 AND prerequisite_task_id=$2", b.ID, a.ID).Scan(&status); err != nil || status != "satisfied" {
+	if err = f.s.pool.QueryRow(ctx, "SELECT status FROM sitetrack.task_dependencies WHERE dependent_task_id=$1 AND required_task_id=$2", b.ID, a.ID).Scan(&status); err != nil || status != "satisfied" {
 		t.Fatal("stored dependency state could be forged")
 	}
 }
@@ -331,7 +331,7 @@ func TestConcurrentGraphAndTransitionMutationsRemainConsistent(t *testing.T) {
 	}
 	a, b := f.create(t, p, "Cycle A"), f.create(t, p, "Cycle B")
 	race(func() error { _, err := f.s.AddDependency(ctx, f.users[0], p, a.ID, b.ID); return err }, func() error { _, err := f.s.AddDependency(ctx, f.users[0], p, b.ID, a.ID); return err })
-	root, leaf := f.create(t, p, "Prerequisite"), f.create(t, p, "Dependent")
+	root, leaf := f.create(t, p, "Dependency"), f.create(t, p, "Dependent")
 	f.link(t, p, leaf.ID, root.ID)
 	f.action(t, p, root.ID, "start")
 	f.action(t, p, root.ID, "done")
@@ -350,7 +350,7 @@ func TestTaskMutationRollsBackWhenNotificationInsertFails(t *testing.T) {
 	if _, err := f.s.pool.Exec(ctx, "INSERT INTO sitetrack.project_memberships(project_id,user_id,is_admin) VALUES($1,$2,false)", p, f.users[1]); err != nil {
 		t.Fatal(err)
 	}
-	a, b := f.create(t, p, "Prerequisite"), f.create(t, p, "Dependent")
+	a, b := f.create(t, p, "Dependency"), f.create(t, p, "Dependent")
 	f.link(t, p, b.ID, a.ID)
 	f.action(t, p, a.ID, "start")
 	if _, err := f.s.pool.Exec(ctx, `CREATE FUNCTION sitetrack.reject_task_notice() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'forced task notification failure'; END $$; CREATE TRIGGER reject_task_notice BEFORE INSERT ON sitetrack.notifications FOR EACH ROW EXECUTE FUNCTION sitetrack.reject_task_notice();`); err != nil {

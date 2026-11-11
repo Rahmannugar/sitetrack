@@ -179,7 +179,7 @@ func (w *Worker) retry(ctx context.Context, job Job, failure error) error {
 	}
 	ack, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	count, err := w.queries.RetryJob(ack, outboxdb.RetryJobParams{ID: job.ID, LeaseToken: job.LeaseToken, Status: status, AvailableAt: pgtype.Timestamptz{Time: next, Valid: true}, ErrorCode: &problem.Code})
+	count, err := w.queries.RetryJob(ack, outboxdb.RetryJobParams{ID: job.ID, LeaseToken: job.LeaseToken, Status: outboxdb.SitetrackOutboxStatus(status), AvailableAt: pgtype.Timestamptz{Time: next, Valid: true}, ErrorCode: &problem.Code})
 	if err == nil && count == 1 {
 		w.record(ctx, job, status, problem.Code)
 	}

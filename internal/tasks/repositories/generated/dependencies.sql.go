@@ -10,33 +10,33 @@ import (
 )
 
 const addDependency = `-- name: AddDependency :one
-INSERT INTO sitetrack.task_dependencies(project_id,dependent_task_id,prerequisite_task_id,status)
-VALUES($1,$2,$3,'waiting') RETURNING project_id, dependent_task_id, prerequisite_task_id, status
+INSERT INTO sitetrack.task_dependencies(project_id,dependent_task_id,required_task_id,status)
+VALUES($1,$2,$3,'waiting') RETURNING project_id, dependent_task_id, required_task_id, status
 `
 
 type AddDependencyParams struct {
-	ProjectID          string
-	DependentTaskID    string
-	PrerequisiteTaskID string
+	ProjectID       string
+	DependentTaskID string
+	RequiredTaskID  string
 }
 
 func (q *Queries) AddDependency(ctx context.Context, arg AddDependencyParams) (SitetrackTaskDependency, error) {
-	row := q.db.QueryRow(ctx, addDependency, arg.ProjectID, arg.DependentTaskID, arg.PrerequisiteTaskID)
+	row := q.db.QueryRow(ctx, addDependency, arg.ProjectID, arg.DependentTaskID, arg.RequiredTaskID)
 	var i SitetrackTaskDependency
 	err := row.Scan(
 		&i.ProjectID,
 		&i.DependentTaskID,
-		&i.PrerequisiteTaskID,
+		&i.RequiredTaskID,
 		&i.Status,
 	)
 	return i, err
 }
 
 const listDependencies = `-- name: ListDependencies :many
-SELECT d.prerequisite_task_id,d.status,t.name,t.status AS task_status
-FROM sitetrack.task_dependencies d JOIN sitetrack.tasks t ON t.id=d.prerequisite_task_id
-WHERE d.project_id=$1 AND d.dependent_task_id=$2 AND ($3::text='' OR d.prerequisite_task_id>$3)
-ORDER BY d.prerequisite_task_id LIMIT $4
+SELECT d.required_task_id,d.status,t.name,t.status AS task_status
+FROM sitetrack.task_dependencies d JOIN sitetrack.tasks t ON t.id=d.required_task_id
+WHERE d.project_id=$1 AND d.dependent_task_id=$2 AND ($3::text='' OR d.required_task_id>$3)
+ORDER BY d.required_task_id LIMIT $4
 `
 
 type ListDependenciesParams struct {
@@ -47,10 +47,10 @@ type ListDependenciesParams struct {
 }
 
 type ListDependenciesRow struct {
-	PrerequisiteTaskID string
-	Status             SitetrackDependencyStatus
-	Name               string
-	TaskStatus         SitetrackTaskStatus
+	RequiredTaskID string
+	Status         SitetrackDependencyStatus
+	Name           string
+	TaskStatus     SitetrackTaskStatus
 }
 
 func (q *Queries) ListDependencies(ctx context.Context, arg ListDependenciesParams) ([]ListDependenciesRow, error) {
@@ -68,7 +68,7 @@ func (q *Queries) ListDependencies(ctx context.Context, arg ListDependenciesPara
 	for rows.Next() {
 		var i ListDependenciesRow
 		if err := rows.Scan(
-			&i.PrerequisiteTaskID,
+			&i.RequiredTaskID,
 			&i.Status,
 			&i.Name,
 			&i.TaskStatus,
@@ -85,13 +85,13 @@ func (q *Queries) ListDependencies(ctx context.Context, arg ListDependenciesPara
 
 const listRelationships = `-- name: ListRelationships :many
 WITH RECURSIVE paths(id,steps) AS (
-    SELECT CASE $4::text WHEN 'prerequisites' THEN d.prerequisite_task_id ELSE d.dependent_task_id END AS id,1::integer AS steps
+    SELECT CASE $4::text WHEN 'dependencies' THEN d.required_task_id ELSE d.dependent_task_id END AS id,1::integer AS steps
     FROM sitetrack.task_dependencies d WHERE d.project_id=$5 AND
-      (($4::text='prerequisites' AND d.dependent_task_id=$6) OR ($4::text='dependents' AND d.prerequisite_task_id=$6))
+      (($4::text='dependencies' AND d.dependent_task_id=$6) OR ($4::text='dependents' AND d.required_task_id=$6))
     UNION
-    SELECT CASE $4::text WHEN 'prerequisites' THEN d.prerequisite_task_id ELSE d.dependent_task_id END,p.steps+1
+    SELECT CASE $4::text WHEN 'dependencies' THEN d.required_task_id ELSE d.dependent_task_id END,p.steps+1
     FROM paths p JOIN sitetrack.task_dependencies d ON
-      (($4::text='prerequisites' AND d.dependent_task_id=p.id) OR ($4::text='dependents' AND d.prerequisite_task_id=p.id))
+      (($4::text='dependencies' AND d.dependent_task_id=p.id) OR ($4::text='dependents' AND d.required_task_id=p.id))
     WHERE d.project_id=$5
 ), distances AS (SELECT paths.id,min(paths.steps)::integer AS steps FROM paths GROUP BY paths.id)
 SELECT t.id,t.name,t.status,d.steps FROM distances d JOIN sitetrack.tasks t ON t.id=d.id
@@ -149,17 +149,17 @@ func (q *Queries) ListRelationships(ctx context.Context, arg ListRelationshipsPa
 }
 
 const removeDependency = `-- name: RemoveDependency :execrows
-DELETE FROM sitetrack.task_dependencies WHERE project_id=$1 AND dependent_task_id=$2 AND prerequisite_task_id=$3
+DELETE FROM sitetrack.task_dependencies WHERE project_id=$1 AND dependent_task_id=$2 AND required_task_id=$3
 `
 
 type RemoveDependencyParams struct {
-	ProjectID          string
-	DependentTaskID    string
-	PrerequisiteTaskID string
+	ProjectID       string
+	DependentTaskID string
+	RequiredTaskID  string
 }
 
 func (q *Queries) RemoveDependency(ctx context.Context, arg RemoveDependencyParams) (int64, error) {
-	result, err := q.db.Exec(ctx, removeDependency, arg.ProjectID, arg.DependentTaskID, arg.PrerequisiteTaskID)
+	result, err := q.db.Exec(ctx, removeDependency, arg.ProjectID, arg.DependentTaskID, arg.RequiredTaskID)
 	if err != nil {
 		return 0, err
 	}

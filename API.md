@@ -57,7 +57,7 @@ Remove a project member.
 
 ## Tasks
 
-Create a project task.
+Create a project task as a project admin.
 `POST /projects/:id/tasks`
 
 List project tasks.
@@ -66,31 +66,31 @@ List project tasks.
 Read a task and its allowed actions.
 `GET /projects/:id/tasks/:task_id`
 
-Replace task name and planned dates.
+Update a task’s name and dates as a project admin.
 `PUT /projects/:id/tasks/:task_id`
 
-Remove a task.
+Remove a task as a project admin.
 `DELETE /projects/:id/tasks/:task_id`
 
-Start a task.
+Start a task as a project admin.
 `POST /projects/:id/tasks/:task_id/start`
 
-Mark a task as done.
+Mark a task as done as a project admin.
 `POST /projects/:id/tasks/:task_id/done`
 
-Reopen a task.
+Reopen a task as a project admin.
 `POST /projects/:id/tasks/:task_id/reopen`
 
-List task prerequisites.
+List tasks this task depends on.
 `GET /projects/:id/tasks/:task_id/dependencies`
 
-Add a prerequisite.
+Add a task dependency as a project admin.
 `POST /projects/:id/tasks/:task_id/dependencies`
 
-Remove a prerequisite.
-`DELETE /projects/:id/tasks/:task_id/dependencies/:prerequisite_id`
+Remove a task dependency as a project admin.
+`DELETE /projects/:id/tasks/:task_id/dependencies/:required_task_id`
 
-List all prerequisites or dependent tasks.
+List all tasks this task depends on, or tasks depending on it.
 `GET /projects/:id/tasks/:task_id/relationships`
 
 ## Invitations

@@ -186,27 +186,28 @@ func (q *Queries) PublishJob(ctx context.Context, arg PublishJobParams) (int64, 
 }
 
 const retryJob = `-- name: RetryJob :execrows
-UPDATE sitetrack.outbox_events SET status = $3, available_at = $4,
-    error_code = $5, lease_token = NULL, lease_until = NULL,
-    payload = CASE WHEN $3 = 'failed' THEN NULL ELSE payload END
-WHERE id = $1 AND lease_token = $2 AND status = 'processing'
+UPDATE sitetrack.outbox_events SET status = $1::sitetrack.outbox_status,
+    available_at = $2, error_code = $3,
+    lease_token = NULL, lease_until = NULL,
+    payload = CASE WHEN $1::sitetrack.outbox_status = 'failed' THEN NULL ELSE payload END
+WHERE id = $4 AND lease_token = $5 AND status = 'processing'
 `
 
 type RetryJobParams struct {
-	ID          uuid.UUID
-	LeaseToken  uuid.NullUUID
 	Status      SitetrackOutboxStatus
 	AvailableAt pgtype.Timestamptz
 	ErrorCode   *string
+	ID          uuid.UUID
+	LeaseToken  uuid.NullUUID
 }
 
 func (q *Queries) RetryJob(ctx context.Context, arg RetryJobParams) (int64, error) {
 	result, err := q.db.Exec(ctx, retryJob,
-		arg.ID,
-		arg.LeaseToken,
 		arg.Status,
 		arg.AvailableAt,
 		arg.ErrorCode,
+		arg.ID,
+		arg.LeaseToken,
 	)
 	if err != nil {
 		return 0, err

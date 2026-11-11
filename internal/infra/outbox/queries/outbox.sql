@@ -58,7 +58,8 @@ SET completed_on = (now() AT TIME ZONE 'UTC')::date, lease_until = now()
 WHERE name = 'otp_cleanup' AND lease_token = $1;
 
 -- name: RetryJob :execrows
-UPDATE sitetrack.outbox_events SET status = $3, available_at = $4,
-    error_code = $5, lease_token = NULL, lease_until = NULL,
-    payload = CASE WHEN $3 = 'failed' THEN NULL ELSE payload END
-WHERE id = $1 AND lease_token = $2 AND status = 'processing';
+UPDATE sitetrack.outbox_events SET status = sqlc.arg(status)::sitetrack.outbox_status,
+    available_at = sqlc.arg(available_at), error_code = sqlc.narg(error_code),
+    lease_token = NULL, lease_until = NULL,
+    payload = CASE WHEN sqlc.arg(status)::sitetrack.outbox_status = 'failed' THEN NULL ELSE payload END
+WHERE id = sqlc.arg(id) AND lease_token = sqlc.arg(lease_token) AND status = 'processing';

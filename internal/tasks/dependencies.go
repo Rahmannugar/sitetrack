@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func (s *Service) AddDependency(ctx context.Context, actor uuid.UUID, project, id, prerequisite string) (Dependency, error) {
+func (s *Service) AddDependency(ctx context.Context, actor uuid.UUID, project, id, dependency string) (Dependency, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	tx, q, err := s.locked(ctx, actor, project, true)
@@ -20,21 +20,21 @@ func (s *Service) AddDependency(ctx context.Context, actor uuid.UUID, project, i
 	if _, err = s.read(ctx, q, project, id, actor); err != nil {
 		return Dependency{}, err
 	}
-	target, err := s.read(ctx, q, project, prerequisite, actor)
+	target, err := s.read(ctx, q, project, dependency, actor)
 	if err != nil {
 		return Dependency{}, err
 	}
-	row, err := q.AddDependency(ctx, taskdb.AddDependencyParams{ProjectID: project, DependentTaskID: id, PrerequisiteTaskID: prerequisite})
+	row, err := q.AddDependency(ctx, taskdb.AddDependencyParams{ProjectID: project, DependentTaskID: id, RequiredTaskID: dependency})
 	if err != nil {
 		return Dependency{}, failure(err)
 	}
 	if err = notify(ctx, tx, actor, project, id, "dependency_added"); err != nil {
 		return Dependency{}, err
 	}
-	result := Dependency{PrerequisiteID: prerequisite, Name: target.Name, TaskStatus: target.Status, Status: row.Status}
+	result := Dependency{RequiredTaskID: dependency, Name: target.Name, TaskStatus: target.Status, Status: string(row.Status)}
 	return result, tx.Commit(ctx)
 }
-func (s *Service) RemoveDependency(ctx context.Context, actor uuid.UUID, project, id, prerequisite string) error {
+func (s *Service) RemoveDependency(ctx context.Context, actor uuid.UUID, project, id, dependency string) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	tx, q, err := s.locked(ctx, actor, project, true)
@@ -45,7 +45,7 @@ func (s *Service) RemoveDependency(ctx context.Context, actor uuid.UUID, project
 	if _, err = s.read(ctx, q, project, id, actor); err != nil {
 		return err
 	}
-	count, err := q.RemoveDependency(ctx, taskdb.RemoveDependencyParams{ProjectID: project, DependentTaskID: id, PrerequisiteTaskID: prerequisite})
+	count, err := q.RemoveDependency(ctx, taskdb.RemoveDependencyParams{ProjectID: project, DependentTaskID: id, RequiredTaskID: dependency})
 	if err != nil {
 		return err
 	}
@@ -105,10 +105,10 @@ func (s *Service) Dependencies(ctx context.Context, actor uuid.UUID, project, id
 		rows = rows[:input.Limit]
 	}
 	for _, row := range rows {
-		page.Items = append(page.Items, Dependency{PrerequisiteID: row.PrerequisiteTaskID, Name: row.Name, Status: row.Status, TaskStatus: row.TaskStatus})
+		page.Items = append(page.Items, Dependency{RequiredTaskID: row.RequiredTaskID, Name: row.Name, Status: string(row.Status), TaskStatus: string(row.TaskStatus)})
 	}
 	if more {
-		raw, err := json.Marshal(relationCursor{ID: page.Items[len(page.Items)-1].PrerequisiteID, Project: project, Task: id, Direction: "direct"})
+		raw, err := json.Marshal(relationCursor{ID: page.Items[len(page.Items)-1].RequiredTaskID, Project: project, Task: id, Direction: "direct"})
 		if err != nil {
 			return DependencyPage{}, err
 		}
@@ -127,7 +127,7 @@ func (s *Service) Relationships(ctx context.Context, actor uuid.UUID, project, i
 	if _, err = s.read(ctx, q, project, id, actor); err != nil {
 		return RelationshipPage{}, err
 	}
-	if input.Limit < 1 || input.Limit > 100 || (input.Direction != "prerequisites" && input.Direction != "dependents") {
+	if input.Limit < 1 || input.Limit > 100 || (input.Direction != "dependencies" && input.Direction != "dependents") {
 		return RelationshipPage{}, ErrInvalid
 	}
 	after, err := decodeRelation(input.Cursor, project, id, input.Direction)
@@ -144,7 +144,7 @@ func (s *Service) Relationships(ctx context.Context, actor uuid.UUID, project, i
 		rows = rows[:input.Limit]
 	}
 	for _, row := range rows {
-		page.Items = append(page.Items, Relationship{ID: row.ID, Name: row.Name, Status: row.Status, Steps: row.Steps})
+		page.Items = append(page.Items, Relationship{ID: row.ID, Name: row.Name, Status: string(row.Status), Steps: row.Steps})
 	}
 	if more {
 		last := page.Items[len(page.Items)-1]

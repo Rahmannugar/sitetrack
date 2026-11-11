@@ -39,9 +39,9 @@ const getTask = `-- name: GetTask :one
 SELECT t.id, t.project_id, t.name, t.start_date, t.end_date, t.status, t.created_at, t.deleted_at, EXISTS(SELECT 1 FROM sitetrack.project_memberships m WHERE m.project_id=t.project_id AND m.user_id=$1 AND m.is_admin)::boolean AS is_admin, (t.status<>'done' AND (t.end_date<$2::date OR (t.status='not_started' AND t.start_date<$2)))::boolean AS late,
     (t.status<>'done' AND EXISTS(SELECT 1 FROM sitetrack.task_dependencies d WHERE d.dependent_task_id=t.id AND d.status='waiting'))::boolean AS blocked,
     (SELECT count(*) FROM sitetrack.task_dependencies d WHERE d.dependent_task_id=t.id)::bigint AS dependency_count,
-    (SELECT count(*) FROM sitetrack.task_dependencies d WHERE d.prerequisite_task_id=t.id)::bigint AS dependent_count,
-    ARRAY(SELECT d.prerequisite_task_id FROM sitetrack.task_dependencies d WHERE d.dependent_task_id=t.id ORDER BY d.prerequisite_task_id LIMIT 20)::text[] AS depends_on,
-    NOT EXISTS(SELECT 1 FROM sitetrack.task_dependencies d JOIN sitetrack.tasks successor ON successor.id=d.dependent_task_id WHERE d.prerequisite_task_id=t.id AND successor.status<>'not_started') AS can_reopen
+    (SELECT count(*) FROM sitetrack.task_dependencies d WHERE d.required_task_id=t.id)::bigint AS dependent_count,
+    ARRAY(SELECT d.required_task_id FROM sitetrack.task_dependencies d WHERE d.dependent_task_id=t.id ORDER BY d.required_task_id LIMIT 20)::text[] AS depends_on,
+    NOT EXISTS(SELECT 1 FROM sitetrack.task_dependencies d JOIN sitetrack.tasks successor ON successor.id=d.dependent_task_id WHERE d.required_task_id=t.id AND successor.status<>'not_started') AS can_reopen
 FROM sitetrack.tasks t WHERE t.project_id=$3 AND t.id=$4 AND t.deleted_at IS NULL
 `
 
@@ -104,9 +104,9 @@ WITH candidates AS (
 SELECT t.id, t.project_id, t.name, t.start_date, t.end_date, t.status, t.created_at, t.deleted_at, EXISTS(SELECT 1 FROM sitetrack.project_memberships m WHERE m.project_id=t.project_id AND m.user_id=$14 AND m.is_admin)::boolean AS is_admin, (t.status<>'done' AND (t.end_date<$15::date OR (t.status='not_started' AND t.start_date<$15)))::boolean AS late,
     (t.status<>'done' AND EXISTS(SELECT 1 FROM sitetrack.task_dependencies d WHERE d.dependent_task_id=t.id AND d.status='waiting'))::boolean AS blocked,
     (SELECT count(*) FROM sitetrack.task_dependencies d WHERE d.dependent_task_id=t.id)::bigint AS dependency_count,
-    (SELECT count(*) FROM sitetrack.task_dependencies d WHERE d.prerequisite_task_id=t.id)::bigint AS dependent_count,
-    ARRAY(SELECT d.prerequisite_task_id FROM sitetrack.task_dependencies d WHERE d.dependent_task_id=t.id ORDER BY d.prerequisite_task_id LIMIT 20)::text[] AS depends_on,
-    NOT EXISTS(SELECT 1 FROM sitetrack.task_dependencies d JOIN sitetrack.tasks successor ON successor.id=d.dependent_task_id WHERE d.prerequisite_task_id=t.id AND successor.status<>'not_started') AS can_reopen
+    (SELECT count(*) FROM sitetrack.task_dependencies d WHERE d.required_task_id=t.id)::bigint AS dependent_count,
+    ARRAY(SELECT d.required_task_id FROM sitetrack.task_dependencies d WHERE d.dependent_task_id=t.id ORDER BY d.required_task_id LIMIT 20)::text[] AS depends_on,
+    NOT EXISTS(SELECT 1 FROM sitetrack.task_dependencies d JOIN sitetrack.tasks successor ON successor.id=d.dependent_task_id WHERE d.required_task_id=t.id AND successor.status<>'not_started') AS can_reopen
 FROM sitetrack.tasks t WHERE t.project_id=$16 AND t.deleted_at IS NULL
 )
 SELECT id, project_id, name, start_date, end_date, status, created_at, deleted_at, is_admin, late, blocked, dependency_count, dependent_count, depends_on, can_reopen FROM candidates t

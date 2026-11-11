@@ -83,7 +83,7 @@ func notification(row notificationdb.ListNotificationsRow) Notification {
 		result.ReadAt = &row.ReadAt.Time
 	}
 	if row.InvitationID.Valid && row.InvitationStatus != nil {
-		result.Invitation = &Invitation{ID: row.InvitationID.UUID, Status: *row.InvitationStatus, CanRespond: *row.InvitationStatus == "pending"}
+		result.Invitation = &Invitation{ID: row.InvitationID.UUID, Status: string(*row.InvitationStatus), CanRespond: *row.InvitationStatus == "pending"}
 	}
 	return result
 }

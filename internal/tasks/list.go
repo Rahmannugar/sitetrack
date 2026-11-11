@@ -82,7 +82,7 @@ func (s *Service) List(ctx context.Context, actor uuid.UUID, project string, inp
 			}
 		}
 	}
-	rows, err := q.ListTasks(ctx, taskdb.ListTasksParams{ProjectID: project, Actor:actor, Today: today, Status: input.Status, Search: input.Search, Late: input.Late, Blocked: input.Blocked, FromDate: from, ToDate: to, SortBy: input.Sort, SortOrder: input.Order, AfterID: after.ID, AfterValue: after.Value, AfterDate: afterDate, AfterCount: afterCount, PageSize: int32(input.Limit + 1)})
+	rows, err := q.ListTasks(ctx, taskdb.ListTasksParams{ProjectID: project, Actor: actor, Today: today, Status: input.Status, Search: input.Search, Late: input.Late, Blocked: input.Blocked, FromDate: from, ToDate: to, SortBy: input.Sort, SortOrder: input.Order, AfterID: after.ID, AfterValue: after.Value, AfterDate: afterDate, AfterCount: afterCount, PageSize: int32(input.Limit + 1)})
 	if err != nil {
 		return Page{}, err
 	}

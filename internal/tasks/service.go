@@ -94,7 +94,9 @@ func (s *Service) locked(ctx context.Context, actor uuid.UUID, project string, w
 	if err == nil {
 		var isAdmin bool
 		isAdmin, err = q.ProjectAccess(ctx, taskdb.ProjectAccessParams{ProjectID: project, Actor: actor})
-		if err == nil && write && !isAdmin { err = ErrForbidden }
+		if err == nil && write && !isAdmin {
+			err = ErrForbidden
+		}
 	}
 	if err != nil {
 		rollback(tx)
@@ -103,11 +105,13 @@ func (s *Service) locked(ctx context.Context, actor uuid.UUID, project string, w
 	return tx, q, nil
 }
 func task(row taskdb.GetTaskRow) Task {
-	result := Task{ID: row.ID, ProjectID: row.ProjectID, Name: row.Name, StartDate: row.StartDate.Time.Format(time.DateOnly), EndDate: row.EndDate.Time.Format(time.DateOnly), Status: row.Status, Late: row.Late, Blocked: row.Blocked, DependsOn: row.DependsOn, DependencyCount: row.DependencyCount, DependentCount: row.DependentCount, HasMoreDependencies: row.DependencyCount > int64(len(row.DependsOn)), AllowedActions: []string{}, CreatedAt: row.CreatedAt.Time}
+	result := Task{ID: row.ID, ProjectID: row.ProjectID, Name: row.Name, StartDate: row.StartDate.Time.Format(time.DateOnly), EndDate: row.EndDate.Time.Format(time.DateOnly), Status: string(row.Status), Late: row.Late, Blocked: row.Blocked, DependsOn: row.DependsOn, DependencyCount: row.DependencyCount, DependentCount: row.DependentCount, HasMoreDependencies: row.DependencyCount > int64(len(row.DependsOn)), AllowedActions: []string{}, CreatedAt: row.CreatedAt.Time}
 	if result.DependsOn == nil {
 		result.DependsOn = []string{}
 	}
-	if !row.IsAdmin { return result }
+	if !row.IsAdmin {
+		return result
+	}
 	switch row.Status {
 	case "not_started":
 		if !row.Blocked {
@@ -254,7 +258,7 @@ func (s *Service) Transition(ctx context.Context, actor uuid.UUID, project, id, 
 	if next == "" {
 		return Task{}, fmt.Errorf("%w: task action is not allowed", ErrConflict)
 	}
-	if err = q.TransitionTask(ctx, taskdb.TransitionTaskParams{ProjectID: project, ID: id, Status: next}); err != nil {
+	if err = q.TransitionTask(ctx, taskdb.TransitionTaskParams{ProjectID: project, ID: id, Status: taskdb.SitetrackTaskStatus(next)}); err != nil {
 		return Task{}, failure(err)
 	}
 	if err = notify(ctx, tx, actor, project, id, action); err != nil {

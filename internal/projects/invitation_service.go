@@ -16,7 +16,7 @@ import (
 )
 
 func invitation(row projectdb.SitetrackProjectInvitation) Invitation {
-	result := Invitation{ID: row.ID, ProjectID: row.ProjectID, InviterID: row.InviterID, InviteeID: row.InviteeID, Status: row.Status, CreatedAt: row.CreatedAt.Time}
+	result := Invitation{ID: row.ID, ProjectID: row.ProjectID, InviterID: row.InviterID, InviteeID: row.InviteeID, Status: string(row.Status), CreatedAt: row.CreatedAt.Time}
 	if row.CompletedAt.Valid {
 		result.CompletedAt = &row.CompletedAt.Time
 	}
@@ -125,7 +125,7 @@ func (s *Service) Respond(ctx context.Context, actor, id uuid.UUID, action strin
 	if action == "accept" {
 		status = "accepted"
 	}
-	row, err := q.FinishInvitation(ctx, projectdb.FinishInvitationParams{ID: id, ProjectID: project, Status: status})
+	row, err := q.FinishInvitation(ctx, projectdb.FinishInvitationParams{ID: id, ProjectID: project, Status: projectdb.SitetrackInvitationStatus(status)})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Invitation{}, ErrInvitationConflict
 	}

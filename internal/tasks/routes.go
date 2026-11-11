@@ -23,7 +23,7 @@ type taskPath struct {
 type dependencyPath struct {
 	ProjectID      string `json:"id" uri:"id" binding:"required,max=32"`
 	TaskID         string `json:"task_id" uri:"task_id" binding:"required,max=64"`
-	PrerequisiteID string `json:"prerequisite_id" uri:"prerequisite_id" binding:"required,max=64"`
+	RequiredTaskID string `json:"required_task_id" uri:"required_task_id" binding:"required,max=64"`
 }
 
 func Register(router *gin.RouterGroup, service *Service, accounts authentication.Accounts, contracts *openapi.Registry, enabled bool, logger *slog.Logger) error {
@@ -164,21 +164,21 @@ func Register(router *gin.RouterGroup, service *Service, accounts authentication
 				return
 			}
 			principal, _ := authentication.CurrentPrincipal(c.Request.Context())
-			result, err := service.AddDependency(c.Request.Context(), principal.User.ID, params.ProjectID, params.TaskID, value.PrerequisiteID)
+			result, err := service.AddDependency(c.Request.Context(), principal.User.ID, params.ProjectID, params.TaskID, value.RequiredTaskID)
 			if err != nil {
 				taskError(c, logger, err)
 				return
 			}
 			c.JSON(http.StatusCreated, result)
 		}},
-		{"DELETE", "/:task_id/dependencies/:prerequisite_id", removeDependencyContract(dependencyParams.Schema), ratelimit.Policy{RequestsPerSecond: 2, Burst: 5, RequestsPerWindow: 60, Window: time.Minute}, func(c *gin.Context) {
+		{"DELETE", "/:task_id/dependencies/:required_task_id", removeDependencyContract(dependencyParams.Schema), ratelimit.Policy{RequestsPerSecond: 2, Burst: 5, RequestsPerWindow: 60, Window: time.Minute}, func(c *gin.Context) {
 			params, err := dependencyParams.DecodePath(c)
 			if err != nil {
 				taskError(c, logger, ErrInvalid)
 				return
 			}
 			principal, _ := authentication.CurrentPrincipal(c.Request.Context())
-			if err := service.RemoveDependency(c.Request.Context(), principal.User.ID, params.ProjectID, params.TaskID, params.PrerequisiteID); err != nil {
+			if err := service.RemoveDependency(c.Request.Context(), principal.User.ID, params.ProjectID, params.TaskID, params.RequiredTaskID); err != nil {
 				taskError(c, logger, err)
 				return
 			}
