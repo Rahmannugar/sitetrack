@@ -82,7 +82,6 @@ func taskTest(t *testing.T) *fixture {
 			"DELETE FROM sitetrack.task_dependencies WHERE project_id=ANY($1)",
 			"DELETE FROM sitetrack.tasks WHERE project_id=ANY($1)",
 			"DELETE FROM sitetrack.project_invitations WHERE project_id=ANY($1)",
-			"DELETE FROM sitetrack.project_stores WHERE project_id=ANY($1)",
 			"DELETE FROM sitetrack.project_memberships WHERE project_id=ANY($1)",
 			"DELETE FROM sitetrack.projects WHERE id=ANY($1)",
 		} {

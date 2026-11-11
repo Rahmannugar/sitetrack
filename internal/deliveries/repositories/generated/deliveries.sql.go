@@ -137,17 +137,17 @@ func (q *Queries) EnsureCompanyInventory(ctx context.Context, materialIds []uuid
 }
 
 const ensureProjectInventory = `-- name: EnsureProjectInventory :exec
-INSERT INTO sitetrack.project_inventory(project_store_id,material_id)
+INSERT INTO sitetrack.project_inventory(project_id,material_id)
 SELECT $1,unnest($2::uuid[]) ON CONFLICT DO NOTHING
 `
 
 type EnsureProjectInventoryParams struct {
-	StoreID     uuid.UUID
+	ProjectID   string
 	MaterialIds []uuid.UUID
 }
 
 func (q *Queries) EnsureProjectInventory(ctx context.Context, arg EnsureProjectInventoryParams) error {
-	_, err := q.db.Exec(ctx, ensureProjectInventory, arg.StoreID, arg.MaterialIds)
+	_, err := q.db.Exec(ctx, ensureProjectInventory, arg.ProjectID, arg.MaterialIds)
 	return err
 }
 
@@ -402,11 +402,11 @@ func (q *Queries) LockProject(ctx context.Context, id string) (string, error) {
 }
 
 const projectAccess = `-- name: ProjectAccess :one
-SELECT s.id AS store_id,(p.deleted_at IS NOT NULL)::boolean AS removed,
+SELECT (p.deleted_at IS NOT NULL)::boolean AS removed,
  u.role IN ('company_store_manager','superadmin') AS company,
  (p.deleted_at IS NULL AND (u.role='superadmin' OR m.user_id IS NOT NULL))::boolean AS readable,
  COALESCE(m.is_admin,false)::boolean AS admin
-FROM sitetrack.projects p JOIN sitetrack.project_stores s ON s.project_id=p.id
+FROM sitetrack.projects p
 JOIN sitetrack.users u ON u.id=$1
 LEFT JOIN sitetrack.project_memberships m ON m.project_id=p.id AND m.user_id=u.id
 WHERE p.id=$2
@@ -418,7 +418,6 @@ type ProjectAccessParams struct {
 }
 
 type ProjectAccessRow struct {
-	StoreID  uuid.UUID
 	Removed  bool
 	Company  bool
 	Readable bool
@@ -429,7 +428,6 @@ func (q *Queries) ProjectAccess(ctx context.Context, arg ProjectAccessParams) (P
 	row := q.db.QueryRow(ctx, projectAccess, arg.Actor, arg.ProjectID)
 	var i ProjectAccessRow
 	err := row.Scan(
-		&i.StoreID,
 		&i.Removed,
 		&i.Company,
 		&i.Readable,
@@ -457,17 +455,17 @@ func (q *Queries) ReceiveCompanyStock(ctx context.Context, arg ReceiveCompanySto
 const receiveProjectStock = `-- name: ReceiveProjectStock :exec
 UPDATE sitetrack.project_inventory i SET quantity=i.quantity+line.amount::numeric,updated_at=clock_timestamp(),last_delivery_at=clock_timestamp()
 FROM (SELECT unnest($2::uuid[]) AS material_id,unnest($3::text[]) AS amount) line
-WHERE i.project_store_id=$1 AND i.material_id=line.material_id
+WHERE i.project_id=$1 AND i.material_id=line.material_id
 `
 
 type ReceiveProjectStockParams struct {
-	StoreID     uuid.UUID
+	ProjectID   string
 	MaterialIds []uuid.UUID
 	Quantities  []string
 }
 
 func (q *Queries) ReceiveProjectStock(ctx context.Context, arg ReceiveProjectStockParams) error {
-	_, err := q.db.Exec(ctx, receiveProjectStock, arg.StoreID, arg.MaterialIds, arg.Quantities)
+	_, err := q.db.Exec(ctx, receiveProjectStock, arg.ProjectID, arg.MaterialIds, arg.Quantities)
 	return err
 }
 
@@ -493,12 +491,12 @@ const releaseProjectStock = `-- name: ReleaseProjectStock :exec
 UPDATE sitetrack.project_inventory i SET quantity=i.quantity+CASE WHEN $1::boolean THEN line.amount::numeric ELSE 0 END,
 in_transit=i.in_transit-line.amount::numeric,updated_at=clock_timestamp(),last_delivery_at=CASE WHEN $1::boolean THEN clock_timestamp() ELSE i.last_delivery_at END
 FROM (SELECT unnest($3::uuid[]) AS material_id,unnest($4::text[]) AS amount) line
-WHERE i.project_store_id=$2 AND i.material_id=line.material_id
+WHERE i.project_id=$2 AND i.material_id=line.material_id
 `
 
 type ReleaseProjectStockParams struct {
 	ReturnStock bool
-	StoreID     uuid.UUID
+	ProjectID   string
 	MaterialIds []uuid.UUID
 	Quantities  []string
 }
@@ -506,7 +504,7 @@ type ReleaseProjectStockParams struct {
 func (q *Queries) ReleaseProjectStock(ctx context.Context, arg ReleaseProjectStockParams) error {
 	_, err := q.db.Exec(ctx, releaseProjectStock,
 		arg.ReturnStock,
-		arg.StoreID,
+		arg.ProjectID,
 		arg.MaterialIds,
 		arg.Quantities,
 	)
@@ -535,17 +533,17 @@ func (q *Queries) SendCompanyStock(ctx context.Context, arg SendCompanyStockPara
 const sendProjectStock = `-- name: SendProjectStock :execrows
 UPDATE sitetrack.project_inventory i SET quantity=i.quantity-line.amount::numeric,in_transit=i.in_transit+line.amount::numeric,updated_at=clock_timestamp(),last_delivery_at=clock_timestamp()
 FROM (SELECT unnest($2::uuid[]) AS material_id,unnest($3::text[]) AS amount) line
-WHERE i.project_store_id=$1 AND i.material_id=line.material_id AND i.quantity>=line.amount::numeric
+WHERE i.project_id=$1 AND i.material_id=line.material_id AND i.quantity>=line.amount::numeric
 `
 
 type SendProjectStockParams struct {
-	StoreID     uuid.UUID
+	ProjectID   string
 	MaterialIds []uuid.UUID
 	Quantities  []string
 }
 
 func (q *Queries) SendProjectStock(ctx context.Context, arg SendProjectStockParams) (int64, error) {
-	result, err := q.db.Exec(ctx, sendProjectStock, arg.StoreID, arg.MaterialIds, arg.Quantities)
+	result, err := q.db.Exec(ctx, sendProjectStock, arg.ProjectID, arg.MaterialIds, arg.Quantities)
 	if err != nil {
 		return 0, err
 	}

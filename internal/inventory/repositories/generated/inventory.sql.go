@@ -174,7 +174,7 @@ func (q *Queries) ListCompanyStock(ctx context.Context, arg ListCompanyStockPara
 }
 
 const listProjectStock = `-- name: ListProjectStock :many
-SELECT store_id,material_id,name,category_id,category_name,unit,quantity::text,last_delivery_at,updated_at,sort_name
+SELECT material_id,name,category_id,category_name,unit,quantity::text,last_delivery_at,updated_at,sort_name
 FROM sitetrack.project_stock
 WHERE project_id=$1
 AND ($2::text='' OR lower(name) LIKE lower($2))
@@ -218,7 +218,6 @@ type ListProjectStockParams struct {
 }
 
 type ListProjectStockRow struct {
-	StoreID        uuid.UUID
 	MaterialID     uuid.UUID
 	Name           string
 	CategoryID     uuid.UUID
@@ -251,7 +250,6 @@ func (q *Queries) ListProjectStock(ctx context.Context, arg ListProjectStockPara
 	for rows.Next() {
 		var i ListProjectStockRow
 		if err := rows.Scan(
-			&i.StoreID,
 			&i.MaterialID,
 			&i.Name,
 			&i.CategoryID,
@@ -294,8 +292,28 @@ func (q *Queries) LockProject(ctx context.Context, id string) (string, error) {
 	return id_2, err
 }
 
+const projectAccess = `-- name: ProjectAccess :one
+SELECT p.id
+FROM sitetrack.projects p
+JOIN sitetrack.users u ON u.id=$1
+LEFT JOIN sitetrack.project_memberships m ON m.project_id=p.id AND m.user_id=u.id
+WHERE p.id=$2 AND p.deleted_at IS NULL AND (u.role='superadmin' OR m.user_id IS NOT NULL)
+`
+
+type ProjectAccessParams struct {
+	Actor     uuid.UUID
+	ProjectID string
+}
+
+func (q *Queries) ProjectAccess(ctx context.Context, arg ProjectAccessParams) (string, error) {
+	row := q.db.QueryRow(ctx, projectAccess, arg.Actor, arg.ProjectID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
 const projectItem = `-- name: ProjectItem :one
-SELECT store_id,material_id,name,category_id,category_name,unit,quantity::text,last_delivery_at,updated_at
+SELECT material_id,name,category_id,category_name,unit,quantity::text,last_delivery_at,updated_at
 FROM sitetrack.project_stock WHERE project_id=$1 AND material_id=$2
 `
 
@@ -305,7 +323,6 @@ type ProjectItemParams struct {
 }
 
 type ProjectItemRow struct {
-	StoreID        uuid.UUID
 	MaterialID     uuid.UUID
 	Name           string
 	CategoryID     uuid.UUID
@@ -320,7 +337,6 @@ func (q *Queries) ProjectItem(ctx context.Context, arg ProjectItemParams) (Proje
 	row := q.db.QueryRow(ctx, projectItem, arg.ProjectID, arg.MaterialID)
 	var i ProjectItemRow
 	err := row.Scan(
-		&i.StoreID,
 		&i.MaterialID,
 		&i.Name,
 		&i.CategoryID,
@@ -331,26 +347,6 @@ func (q *Queries) ProjectItem(ctx context.Context, arg ProjectItemParams) (Proje
 		&i.UpdatedAt,
 	)
 	return i, err
-}
-
-const projectStore = `-- name: ProjectStore :one
-SELECT s.id
-FROM sitetrack.project_stores s JOIN sitetrack.projects p ON p.id=s.project_id
-JOIN sitetrack.users u ON u.id=$1
-LEFT JOIN sitetrack.project_memberships m ON m.project_id=p.id AND m.user_id=u.id
-WHERE p.id=$2 AND p.deleted_at IS NULL AND (u.role='superadmin' OR m.user_id IS NOT NULL)
-`
-
-type ProjectStoreParams struct {
-	Actor     uuid.UUID
-	ProjectID string
-}
-
-func (q *Queries) ProjectStore(ctx context.Context, arg ProjectStoreParams) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, projectStore, arg.Actor, arg.ProjectID)
-	var id uuid.UUID
-	err := row.Scan(&id)
-	return id, err
 }
 
 const setReorderPoint = `-- name: SetReorderPoint :exec

@@ -101,7 +101,6 @@ func projectTest(t *testing.T) *fixture {
 			"UPDATE sitetrack.projects SET deleted_at=now() WHERE id=ANY($1)",
 			"DELETE FROM sitetrack.notifications WHERE project_id=ANY($1)",
 			"DELETE FROM sitetrack.project_invitations WHERE project_id=ANY($1)",
-			"DELETE FROM sitetrack.project_stores WHERE project_id=ANY($1)",
 			"DELETE FROM sitetrack.project_memberships WHERE project_id=ANY($1)",
 			"DELETE FROM sitetrack.projects WHERE id=ANY($1)",
 		} {
@@ -163,7 +162,7 @@ func TestProjectCreationNumberingAndRollback(t *testing.T) {
 	var first Project
 	maxNumber := 0
 	for p := range created {
-		if ids[p.ID] || !p.IsAdmin || p.MemberCount != 1 || p.StoreID.Version() != 7 {
+		if ids[p.ID] || !p.IsAdmin || p.MemberCount != 1 {
 			t.Fatalf("invalid atomic project: %+v", p)
 		}
 		ids[p.ID] = true
@@ -173,10 +172,6 @@ func TestProjectCreationNumberingAndRollback(t *testing.T) {
 			t.Fatal(err)
 		}
 		maxNumber = max(maxNumber, number)
-		var count int
-		if err := f.s.pool.QueryRow(ctx, "SELECT count(*) FROM sitetrack.project_stores WHERE project_id=$1", p.ID).Scan(&count); err != nil || count != 1 {
-			t.Fatal("project store was not created")
-		}
 	}
 	if len(ids) != 12 {
 		t.Fatal("concurrent creation lost projects")
@@ -200,7 +195,7 @@ func TestProjectCreationNumberingAndRollback(t *testing.T) {
 		t.Fatal("failed creation left a project")
 	}
 	updated, err := f.s.Update(ctx, f.users[0], next.ID, Input{Name: "Renamed Site", StartDate: "2027-01-01", EndDate: "2027-01-30"})
-	if err != nil || updated.ID != next.ID || updated.StoreID != next.StoreID || updated.Name != "Renamed Site" || updated.StartDate != "2027-01-01" {
+	if err != nil || updated.ID != next.ID || updated.Name != "Renamed Site" || updated.StartDate != "2027-01-01" {
 		t.Fatal("project update changed identity or lost details")
 	}
 	if _, err := f.s.Update(ctx, f.users[0], next.ID, Input{Name: "Bad Dates", StartDate: "2027-02-10", EndDate: "2026-11-10"}); !errors.Is(err, ErrInvalid) {

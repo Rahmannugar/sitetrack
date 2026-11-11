@@ -132,12 +132,12 @@ func (s *Service) ProjectStock(ctx context.Context, actor uuid.UUID, project str
 	defer cancel()
 	ctx, finish := s.start(ctx, "inventory.project.list", actor)
 	defer func() { finish(resultErr, uuid.Nil) }()
-	tx, q, store, err := s.project(ctx, actor, project)
+	tx, q, err := s.project(ctx, actor, project)
 	if err != nil {
 		return ProjectPage{}, err
 	}
 	defer rollback(tx)
-	opts, after, category, err := prepare(options{Scope: project + ":" + store.String(), Search: input.Search, Category: input.CategoryID, Sort: input.Sort, Order: input.Order}, input.Cursor, input.Limit, false)
+	opts, after, category, err := prepare(options{Scope: project, Search: input.Search, Category: input.CategoryID, Sort: input.Sort, Order: input.Order}, input.Cursor, input.Limit, false)
 	if err != nil {
 		return ProjectPage{}, err
 	}
@@ -159,7 +159,7 @@ func (s *Service) ProjectStock(ctx context.Context, actor uuid.UUID, project str
 		rows = rows[:input.Limit]
 	}
 	for _, row := range rows {
-		page.Items = append(page.Items, projectItem(stockdb.ProjectItemRow{StoreID: row.StoreID, MaterialID: row.MaterialID, Name: row.Name, CategoryID: row.CategoryID, CategoryName: row.CategoryName, Unit: row.Unit, Quantity: row.Quantity, LastDeliveryAt: row.LastDeliveryAt, UpdatedAt: row.UpdatedAt}))
+		page.Items = append(page.Items, projectItem(stockdb.ProjectItemRow{MaterialID: row.MaterialID, Name: row.Name, CategoryID: row.CategoryID, CategoryName: row.CategoryName, Unit: row.Unit, Quantity: row.Quantity, LastDeliveryAt: row.LastDeliveryAt, UpdatedAt: row.UpdatedAt}))
 	}
 	if more {
 		last := rows[len(rows)-1]

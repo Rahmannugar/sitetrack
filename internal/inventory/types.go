@@ -49,7 +49,6 @@ type CompanyItem struct {
 	UpdatedAt           time.Time `json:"updated_at"`
 }
 type ProjectItem struct {
-	StoreID        uuid.UUID  `json:"store_id"`
 	MaterialID     uuid.UUID  `json:"material_id"`
 	Name           string     `json:"name"`
 	CategoryID     uuid.UUID  `json:"category_id"`

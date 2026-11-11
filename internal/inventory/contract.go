@@ -7,7 +7,7 @@ import (
 )
 
 var companyExample = json.RawMessage(`{"material_id":"019f2aa0-7000-7000-8000-000000000010","name":"Cement, OPC 50 kg bag","category_id":"019f2aa0-7000-7000-8000-000000000011","category_name":"Cement","unit":"bag","quantity":"12.500","reorder_point":"20.000","in_transit_to_projects":"0.000","status":"low_stock","updated_at":"2026-11-11T12:00:00Z"}`)
-var projectExample = json.RawMessage(`{"store_id":"019f2aa0-7000-7000-8000-000000000002","material_id":"019f2aa0-7000-7000-8000-000000000010","name":"Cement, OPC 50 kg bag","category_id":"019f2aa0-7000-7000-8000-000000000011","category_name":"Cement","unit":"bag","quantity":"8.000","last_delivery_at":"2026-11-11T12:00:00Z","updated_at":"2026-11-11T12:00:00Z"}`)
+var projectExample = json.RawMessage(`{"material_id":"019f2aa0-7000-7000-8000-000000000010","name":"Cement, OPC 50 kg bag","category_id":"019f2aa0-7000-7000-8000-000000000011","category_name":"Cement","unit":"bag","quantity":"8.000","last_delivery_at":"2026-11-11T12:00:00Z","updated_at":"2026-11-11T12:00:00Z"}`)
 
 func quantitySchema() *jsonschema.Schema {
 	return &jsonschema.Schema{Type: "string", Pattern: `^[0-9]{1,15}\.[0-9]{3}$`}
@@ -22,8 +22,7 @@ func itemSchema(company bool) *jsonschema.Schema {
 		schema.Properties["in_transit_to_projects"] = quantitySchema()
 		schema.Properties["status"] = &jsonschema.Schema{Type: "string", Pattern: "^(out_of_stock|low_stock|available)$"}
 	} else {
-		schema.Required = append(schema.Required, "store_id", "last_delivery_at")
-		schema.Properties["store_id"] = &jsonschema.Schema{Type: "string", Format: "uuid"}
+		schema.Required = append(schema.Required, "last_delivery_at")
 		schema.Properties["last_delivery_at"] = &jsonschema.Schema{Types: []string{"string", "null"}, Format: "date-time"}
 	}
 	return schema

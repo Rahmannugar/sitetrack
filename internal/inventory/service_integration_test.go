@@ -121,7 +121,7 @@ func inventoryTest(t *testing.T) *fixture {
 				return
 			}
 		}
-		for _, sql := range []string{"UPDATE sitetrack.projects SET deleted_at=now() WHERE id=ANY($1)", "DELETE FROM sitetrack.notifications WHERE project_id=ANY($1)", "DELETE FROM sitetrack.project_memberships WHERE project_id=ANY($1)", "DELETE FROM sitetrack.project_stores WHERE project_id=ANY($1)", "DELETE FROM sitetrack.projects WHERE id=ANY($1)"} {
+		for _, sql := range []string{"UPDATE sitetrack.projects SET deleted_at=now() WHERE id=ANY($1)", "DELETE FROM sitetrack.notifications WHERE project_id=ANY($1)", "DELETE FROM sitetrack.project_memberships WHERE project_id=ANY($1)", "DELETE FROM sitetrack.projects WHERE id=ANY($1)"} {
 			if _, err := tx.Exec(ctx, sql, f.projectIDs); err != nil {
 				t.Error(err)
 				return
@@ -277,14 +277,14 @@ func TestInventoryMaterialGuardsRollbackAndRemovalRace(t *testing.T) {
 	}
 	p := f.project(t)
 	projectMaterial := f.material(t, c.ID, " Project")
-	f.exec(t, "INSERT INTO sitetrack.project_inventory(project_store_id,material_id,quantity,in_transit) VALUES($1,$2,0,1)", p.StoreID, projectMaterial.ID)
+	f.exec(t, "INSERT INTO sitetrack.project_inventory(project_id,material_id,quantity,in_transit) VALUES($1,$2,0,1)", p.ID, projectMaterial.ID)
 	if err := f.catalogue.Remove(ctx, f.users[1], projectMaterial.ID); !errors.Is(err, materials.ErrConflict) {
 		t.Fatal("in-transit material removed", err)
 	}
 	if err := f.projects.Remove(ctx, f.users[0], p.ID); !errors.Is(err, projects.ErrStock) {
 		t.Fatal("project with transit goods removed", err)
 	}
-	f.exec(t, "UPDATE sitetrack.project_inventory SET in_transit=0 WHERE project_store_id=$1", p.StoreID)
+	f.exec(t, "UPDATE sitetrack.project_inventory SET in_transit=0 WHERE project_id=$1", p.ID)
 	if err := f.projects.Remove(ctx, f.users[0], p.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -317,7 +317,7 @@ func TestInventoryListsCursorSortsAndProjectAccess(t *testing.T) {
 			date := time.Date(2026, 11, 11, 12+i%3, 0, 0, 0, time.UTC)
 			delivered = &date
 		}
-		f.exec(t, "INSERT INTO sitetrack.project_inventory(project_store_id,material_id,quantity,last_delivery_at) VALUES($1,$2,$3::text::numeric,$4)", p.StoreID, m.ID, value, delivered)
+		f.exec(t, "INSERT INTO sitetrack.project_inventory(project_id,material_id,quantity,last_delivery_at) VALUES($1,$2,$3::text::numeric,$4)", p.ID, m.ID, value, delivered)
 	}
 	for _, order := range []string{"asc", "desc"} {
 		for _, sort := range []string{"name", "quantity", "status"} {
@@ -463,7 +463,7 @@ func TestInventoryHTTPPermissionsContractsAndTelemetry(t *testing.T) {
 	for i := range 23 {
 		item = f.material(t, c.ID, fmt.Sprintf(" HTTP %02d", i))
 	}
-	f.exec(t, "INSERT INTO sitetrack.project_inventory(project_store_id,material_id,quantity) VALUES($1,$2,2.125)", p.StoreID, item.ID)
+	f.exec(t, "INSERT INTO sitetrack.project_inventory(project_id,material_id,quantity) VALUES($1,$2,2.125)", p.ID, item.ID)
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	registry := openapi.New()
@@ -531,6 +531,15 @@ func TestInventoryHTTPPermissionsContractsAndTelemetry(t *testing.T) {
 	var projectPage ProjectPage
 	if err := json.Unmarshal(projectResponse.Body.Bytes(), &projectPage); err != nil || len(projectPage.Items) != 1 || projectPage.Items[0].Quantity != "2.125" || strings.Contains(projectResponse.Body.String(), "can_manage") {
 		t.Fatal("project store did not return stock", err)
+	}
+	if strings.Contains(projectResponse.Body.String(), "store_id") {
+		t.Fatal("project store exposed obsolete store identity")
+	}
+	emptyProject := f.project(t)
+	emptyResponse := call("GET", "/projects/"+emptyProject.ID+"/store", tokens[0], "", 200)
+	var emptyPage ProjectPage
+	if err := json.Unmarshal(emptyResponse.Body.Bytes(), &emptyPage); err != nil || emptyPage.Items == nil || len(emptyPage.Items) != 0 || emptyPage.NextCursor != "" {
+		t.Fatal("new project has no empty store", err)
 	}
 	call("GET", projectBase, tokens[2], "", 200)
 	call("POST", projectBase+"/"+item.ID.String()+"/add-stock", tokens[0], `{"quantity":"1"}`, 404)

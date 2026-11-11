@@ -40,7 +40,6 @@ type Project struct {
 	Name                 string    `json:"name"`
 	StartDate            string    `json:"start_date"`
 	EndDate              string    `json:"end_date"`
-	StoreID              uuid.UUID `json:"store_id"`
 	IsAdmin              bool      `json:"is_admin"`
 	MemberCount          int64     `json:"member_count"`
 	TaskCount            int64     `json:"task_count"`

@@ -57,13 +57,6 @@ func (s *Service) Create(ctx context.Context, actor uuid.UUID, input Input) (Pro
 	if _, err = q.CreateProject(ctx, projectdb.CreateProjectParams{ID: id, Name: input.Name, StartDate: start, EndDate: end}); err != nil {
 		return Project{}, err
 	}
-	store, err := uuid.NewV7()
-	if err != nil {
-		return Project{}, err
-	}
-	if err = q.CreateProjectStore(ctx, projectdb.CreateProjectStoreParams{ID: store, ProjectID: id, Name: input.Name + " store"}); err != nil {
-		return Project{}, err
-	}
 	if err = q.CreateMembership(ctx, projectdb.CreateMembershipParams{ProjectID: id, UserID: actor, IsAdmin: true}); err != nil {
 		return Project{}, err
 	}
@@ -78,7 +71,7 @@ func (s *Service) Create(ctx context.Context, actor uuid.UUID, input Input) (Pro
 }
 
 func project(row projectdb.GetProjectRow) Project {
-	return Project{ID: row.ID, Name: row.Name, StartDate: row.StartDate.Time.Format(time.DateOnly), EndDate: row.EndDate.Time.Format(time.DateOnly), StoreID: row.StoreID, IsAdmin: row.IsAdmin, MemberCount: row.MemberCount, CreatedAt: row.CreatedAt.Time, TaskCount: row.TaskCount, NotStartedCount: row.NotStartedCount, InProgressCount: row.InProgressCount, DoneCount: row.DoneCount, LateCount: row.LateCount, BlockedCount: row.BlockedCount, CompletionPercentage: row.CompletionPercentage}
+	return Project{ID: row.ID, Name: row.Name, StartDate: row.StartDate.Time.Format(time.DateOnly), EndDate: row.EndDate.Time.Format(time.DateOnly), IsAdmin: row.IsAdmin, MemberCount: row.MemberCount, CreatedAt: row.CreatedAt.Time, TaskCount: row.TaskCount, NotStartedCount: row.NotStartedCount, InProgressCount: row.InProgressCount, DoneCount: row.DoneCount, LateCount: row.LateCount, BlockedCount: row.BlockedCount, CompletionPercentage: row.CompletionPercentage}
 }
 func notFound(err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {

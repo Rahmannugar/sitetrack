@@ -8,11 +8,11 @@ SELECT id FROM sitetrack.projects WHERE id=$1 FOR UPDATE;
 SELECT id FROM sitetrack.projects WHERE id=$1 FOR SHARE;
 
 -- name: ProjectAccess :one
-SELECT s.id AS store_id,(p.deleted_at IS NOT NULL)::boolean AS removed,
+SELECT (p.deleted_at IS NOT NULL)::boolean AS removed,
  u.role IN ('company_store_manager','superadmin') AS company,
  (p.deleted_at IS NULL AND (u.role='superadmin' OR m.user_id IS NOT NULL))::boolean AS readable,
  COALESCE(m.is_admin,false)::boolean AS admin
-FROM sitetrack.projects p JOIN sitetrack.project_stores s ON s.project_id=p.id
+FROM sitetrack.projects p
 JOIN sitetrack.users u ON u.id=sqlc.arg(actor)
 LEFT JOIN sitetrack.project_memberships m ON m.project_id=p.id AND m.user_id=u.id
 WHERE p.id=sqlc.arg(project_id);
@@ -30,8 +30,8 @@ SELECT id FROM sitetrack.materials WHERE id=ANY(sqlc.arg(material_ids)::uuid[]) 
 INSERT INTO sitetrack.company_inventory(material_id) SELECT unnest(sqlc.arg(material_ids)::uuid[]) ON CONFLICT DO NOTHING;
 
 -- name: EnsureProjectInventory :exec
-INSERT INTO sitetrack.project_inventory(project_store_id,material_id)
-SELECT sqlc.arg(store_id),unnest(sqlc.arg(material_ids)::uuid[]) ON CONFLICT DO NOTHING;
+INSERT INTO sitetrack.project_inventory(project_id,material_id)
+SELECT sqlc.arg(project_id),unnest(sqlc.arg(material_ids)::uuid[]) ON CONFLICT DO NOTHING;
 
 -- name: SendCompanyStock :execrows
 UPDATE sitetrack.company_inventory i SET quantity=i.quantity-line.amount::numeric,in_transit_to_projects=i.in_transit_to_projects+line.amount::numeric,updated_at=clock_timestamp()
@@ -52,18 +52,18 @@ WHERE i.material_id=line.material_id;
 -- name: SendProjectStock :execrows
 UPDATE sitetrack.project_inventory i SET quantity=i.quantity-line.amount::numeric,in_transit=i.in_transit+line.amount::numeric,updated_at=clock_timestamp(),last_delivery_at=clock_timestamp()
 FROM (SELECT unnest(sqlc.arg(material_ids)::uuid[]) AS material_id,unnest(sqlc.arg(quantities)::text[]) AS amount) line
-WHERE i.project_store_id=sqlc.arg(store_id) AND i.material_id=line.material_id AND i.quantity>=line.amount::numeric;
+WHERE i.project_id=sqlc.arg(project_id) AND i.material_id=line.material_id AND i.quantity>=line.amount::numeric;
 
 -- name: ReleaseProjectStock :exec
 UPDATE sitetrack.project_inventory i SET quantity=i.quantity+CASE WHEN sqlc.arg(return_stock)::boolean THEN line.amount::numeric ELSE 0 END,
 in_transit=i.in_transit-line.amount::numeric,updated_at=clock_timestamp(),last_delivery_at=CASE WHEN sqlc.arg(return_stock)::boolean THEN clock_timestamp() ELSE i.last_delivery_at END
 FROM (SELECT unnest(sqlc.arg(material_ids)::uuid[]) AS material_id,unnest(sqlc.arg(quantities)::text[]) AS amount) line
-WHERE i.project_store_id=sqlc.arg(store_id) AND i.material_id=line.material_id;
+WHERE i.project_id=sqlc.arg(project_id) AND i.material_id=line.material_id;
 
 -- name: ReceiveProjectStock :exec
 UPDATE sitetrack.project_inventory i SET quantity=i.quantity+line.amount::numeric,updated_at=clock_timestamp(),last_delivery_at=clock_timestamp()
 FROM (SELECT unnest(sqlc.arg(material_ids)::uuid[]) AS material_id,unnest(sqlc.arg(quantities)::text[]) AS amount) line
-WHERE i.project_store_id=sqlc.arg(store_id) AND i.material_id=line.material_id;
+WHERE i.project_id=sqlc.arg(project_id) AND i.material_id=line.material_id;
 
 -- name: CreateDelivery :exec
 INSERT INTO sitetrack.deliveries(id,project_id,direction,initiated_by_user_id) VALUES($1,$2,$3,$4);

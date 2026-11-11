@@ -69,29 +69,29 @@ func (s *Service) companyAccess(ctx context.Context, actor uuid.UUID) error {
 	}
 	return nil
 }
-func (s *Service) project(ctx context.Context, actor uuid.UUID, project string) (pgx.Tx, *stockdb.Queries, uuid.UUID, error) {
+func (s *Service) project(ctx context.Context, actor uuid.UUID, project string) (pgx.Tx, *stockdb.Queries, error) {
 	trace.SpanFromContext(ctx).SetAttributes(attribute.String("project.id", project))
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return nil, nil, uuid.Nil, err
+		return nil, nil, err
 	}
 	q := stockdb.New(tx)
 	if _, err = q.LockProject(ctx, project); err != nil {
 		rollback(tx)
-		return nil, nil, uuid.Nil, failure(err)
+		return nil, nil, failure(err)
 	}
-	storeID, err := q.ProjectStore(ctx, stockdb.ProjectStoreParams{Actor: actor, ProjectID: project})
+	_, err = q.ProjectAccess(ctx, stockdb.ProjectAccessParams{Actor: actor, ProjectID: project})
 	if err != nil {
 		rollback(tx)
-		return nil, nil, uuid.Nil, failure(err)
+		return nil, nil, failure(err)
 	}
-	return tx, q, storeID, nil
+	return tx, q, nil
 }
 func companyItem(row stockdb.CompanyItemRow) CompanyItem {
 	return CompanyItem{MaterialID: row.MaterialID, Name: row.Name, CategoryID: row.CategoryID, CategoryName: row.CategoryName, Unit: row.Unit, Quantity: row.Quantity, ReorderPoint: row.ReorderPoint, InTransitToProjects: row.InTransitToProjects, Status: string(row.Status), UpdatedAt: row.UpdatedAt.Time}
 }
 func projectItem(row stockdb.ProjectItemRow) ProjectItem {
-	result := ProjectItem{StoreID: row.StoreID, MaterialID: row.MaterialID, Name: row.Name, CategoryID: row.CategoryID, CategoryName: row.CategoryName, Unit: row.Unit, Quantity: row.Quantity, UpdatedAt: row.UpdatedAt.Time}
+	result := ProjectItem{MaterialID: row.MaterialID, Name: row.Name, CategoryID: row.CategoryID, CategoryName: row.CategoryName, Unit: row.Unit, Quantity: row.Quantity, UpdatedAt: row.UpdatedAt.Time}
 	if row.LastDeliveryAt.Valid {
 		result.LastDeliveryAt = &row.LastDeliveryAt.Time
 	}
@@ -114,7 +114,7 @@ func (s *Service) ProjectItem(ctx context.Context, actor uuid.UUID, project stri
 	defer cancel()
 	ctx, finish := s.start(ctx, "inventory.project.item", actor)
 	defer func() { finish(resultErr, id) }()
-	tx, q, _, err := s.project(ctx, actor, project)
+	tx, q, err := s.project(ctx, actor, project)
 	if err != nil {
 		return ProjectItem{}, err
 	}

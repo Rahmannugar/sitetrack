@@ -4,9 +4,9 @@ SELECT role IN ('company_store_manager','superadmin') AS allowed FROM sitetrack.
 -- name: LockProject :one
 SELECT id FROM sitetrack.projects WHERE id=$1 AND deleted_at IS NULL FOR SHARE;
 
--- name: ProjectStore :one
-SELECT s.id
-FROM sitetrack.project_stores s JOIN sitetrack.projects p ON p.id=s.project_id
+-- name: ProjectAccess :one
+SELECT p.id
+FROM sitetrack.projects p
 JOIN sitetrack.users u ON u.id=sqlc.arg(actor)
 LEFT JOIN sitetrack.project_memberships m ON m.project_id=p.id AND m.user_id=u.id
 WHERE p.id=sqlc.arg(project_id) AND p.deleted_at IS NULL AND (u.role='superadmin' OR m.user_id IS NOT NULL);
@@ -29,7 +29,7 @@ SELECT material_id,name,category_id,category_name,unit,quantity::text,reorder_po
 FROM sitetrack.company_stock WHERE material_id=$1;
 
 -- name: ProjectItem :one
-SELECT store_id,material_id,name,category_id,category_name,unit,quantity::text,last_delivery_at,updated_at
+SELECT material_id,name,category_id,category_name,unit,quantity::text,last_delivery_at,updated_at
 FROM sitetrack.project_stock WHERE project_id=$1 AND material_id=$2;
 
 -- name: ListCompanyStock :many
@@ -60,7 +60,7 @@ ORDER BY
 LIMIT sqlc.arg(page_size);
 
 -- name: ListProjectStock :many
-SELECT store_id,material_id,name,category_id,category_name,unit,quantity::text,last_delivery_at,updated_at,sort_name
+SELECT material_id,name,category_id,category_name,unit,quantity::text,last_delivery_at,updated_at,sort_name
 FROM sitetrack.project_stock
 WHERE project_id=sqlc.arg(project_id)
 AND (sqlc.arg(search)::text='' OR lower(name) LIKE lower(sqlc.arg(search)))

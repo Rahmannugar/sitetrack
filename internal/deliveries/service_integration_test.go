@@ -120,7 +120,7 @@ func deliveryTest(t *testing.T) *fixture {
 			return
 		}
 		for _, p := range f.projectsList {
-			for _, sql := range []string{"UPDATE sitetrack.projects SET deleted_at=now() WHERE id=$1", "DELETE FROM sitetrack.notifications WHERE project_id=$1", "DELETE FROM sitetrack.project_memberships WHERE project_id=$1", "DELETE FROM sitetrack.project_stores WHERE project_id=$1", "DELETE FROM sitetrack.projects WHERE id=$1"} {
+			for _, sql := range []string{"UPDATE sitetrack.projects SET deleted_at=now() WHERE id=$1", "DELETE FROM sitetrack.notifications WHERE project_id=$1", "DELETE FROM sitetrack.project_memberships WHERE project_id=$1", "DELETE FROM sitetrack.projects WHERE id=$1"} {
 				if _, err := tx.Exec(ctx, sql, p.ID); err != nil {
 					t.Error(err)
 					return
@@ -205,7 +205,7 @@ func (f *fixture) move(t *testing.T, d Delivery, action string) Delivery {
 func (f *fixture) balances(t *testing.T, company, project, companyTransit, projectTransit string) {
 	t.Helper()
 	var c, p, ct, pt string
-	if err := f.pool.QueryRow(context.Background(), `SELECT c.quantity::text,p.quantity::text,c.in_transit_to_projects::text,p.in_transit::text FROM sitetrack.company_inventory c JOIN sitetrack.project_inventory p USING(material_id) WHERE c.material_id=$1 AND p.project_store_id=$2`, f.materialIDs[0], f.projectsList[0].StoreID).Scan(&c, &p, &ct, &pt); err != nil {
+	if err := f.pool.QueryRow(context.Background(), `SELECT c.quantity::text,p.quantity::text,c.in_transit_to_projects::text,p.in_transit::text FROM sitetrack.company_inventory c JOIN sitetrack.project_inventory p USING(material_id) WHERE c.material_id=$1 AND p.project_id=$2`, f.materialIDs[0], f.projectsList[0].ID).Scan(&c, &p, &ct, &pt); err != nil {
 		t.Fatal(err)
 	}
 	if c != company || p != project || ct != companyTransit || pt != projectTransit {

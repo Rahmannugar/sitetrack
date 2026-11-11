@@ -70,21 +70,6 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (S
 	return i, err
 }
 
-const createProjectStore = `-- name: CreateProjectStore :exec
-INSERT INTO sitetrack.project_stores (id, project_id, name) VALUES ($1, $2, $3)
-`
-
-type CreateProjectStoreParams struct {
-	ID        uuid.UUID
-	ProjectID string
-	Name      string
-}
-
-func (q *Queries) CreateProjectStore(ctx context.Context, arg CreateProjectStoreParams) error {
-	_, err := q.db.Exec(ctx, createProjectStore, arg.ID, arg.ProjectID, arg.Name)
-	return err
-}
-
 const getMember = `-- name: GetMember :one
 SELECT user_id, is_admin FROM sitetrack.project_memberships WHERE project_id = $1 AND user_id = $2
 `
@@ -107,10 +92,9 @@ func (q *Queries) GetMember(ctx context.Context, arg GetMemberParams) (GetMember
 }
 
 const getProject = `-- name: GetProject :one
-SELECT p.id, p.name, p.start_date, p.end_date, p.created_at, p.deleted_at, p.task_number, s.id AS store_id, COALESCE(m.is_admin, false)::boolean AS is_admin,
+SELECT p.id, p.name, p.start_date, p.end_date, p.created_at, p.deleted_at, p.task_number, COALESCE(m.is_admin, false)::boolean AS is_admin,
     (SELECT count(*) FROM sitetrack.project_memberships team WHERE team.project_id = p.id)::bigint AS member_count,summary.task_count,summary.not_started_count,summary.in_progress_count,summary.done_count,summary.late_count,summary.blocked_count,summary.completion_percentage
 FROM sitetrack.projects p
-JOIN sitetrack.project_stores s ON s.project_id = p.id
 JOIN sitetrack.users u ON u.id = $1
 LEFT JOIN sitetrack.project_memberships m ON m.project_id = p.id AND m.user_id = u.id
 CROSS JOIN LATERAL (
@@ -139,7 +123,6 @@ type GetProjectRow struct {
 	CreatedAt            pgtype.Timestamptz
 	DeletedAt            pgtype.Timestamptz
 	TaskNumber           int64
-	StoreID              uuid.UUID
 	IsAdmin              bool
 	MemberCount          int64
 	TaskCount            int64
@@ -162,7 +145,6 @@ func (q *Queries) GetProject(ctx context.Context, arg GetProjectParams) (GetProj
 		&i.CreatedAt,
 		&i.DeletedAt,
 		&i.TaskNumber,
-		&i.StoreID,
 		&i.IsAdmin,
 		&i.MemberCount,
 		&i.TaskCount,
@@ -222,10 +204,9 @@ func (q *Queries) ListMembers(ctx context.Context, arg ListMembersParams) ([]Lis
 }
 
 const listProjects = `-- name: ListProjects :many
-SELECT p.id, p.name, p.start_date, p.end_date, p.created_at, p.deleted_at, p.task_number, s.id AS store_id, COALESCE(m.is_admin, false)::boolean AS is_admin,
+SELECT p.id, p.name, p.start_date, p.end_date, p.created_at, p.deleted_at, p.task_number, COALESCE(m.is_admin, false)::boolean AS is_admin,
     (SELECT count(*) FROM sitetrack.project_memberships team WHERE team.project_id = p.id)::bigint AS member_count,summary.task_count,summary.not_started_count,summary.in_progress_count,summary.done_count,summary.late_count,summary.blocked_count,summary.completion_percentage
 FROM sitetrack.projects p
-JOIN sitetrack.project_stores s ON s.project_id = p.id
 JOIN sitetrack.users u ON u.id = $1
 LEFT JOIN sitetrack.project_memberships m ON m.project_id = p.id AND m.user_id = u.id
 CROSS JOIN LATERAL (
@@ -276,7 +257,6 @@ type ListProjectsRow struct {
 	CreatedAt            pgtype.Timestamptz
 	DeletedAt            pgtype.Timestamptz
 	TaskNumber           int64
-	StoreID              uuid.UUID
 	IsAdmin              bool
 	MemberCount          int64
 	TaskCount            int64
@@ -316,7 +296,6 @@ func (q *Queries) ListProjects(ctx context.Context, arg ListProjectsParams) ([]L
 			&i.CreatedAt,
 			&i.DeletedAt,
 			&i.TaskNumber,
-			&i.StoreID,
 			&i.IsAdmin,
 			&i.MemberCount,
 			&i.TaskCount,

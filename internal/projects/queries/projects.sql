@@ -5,9 +5,6 @@ SELECT nextval('sitetrack.project_number_seq')::bigint;
 INSERT INTO sitetrack.projects (id, name, start_date, end_date)
 VALUES ($1, $2, $3, $4) RETURNING *;
 
--- name: CreateProjectStore :exec
-INSERT INTO sitetrack.project_stores (id, project_id, name) VALUES ($1, $2, $3);
-
 -- name: CreateMembership :exec
 INSERT INTO sitetrack.project_memberships (project_id, user_id, is_admin) VALUES ($1, $2, $3);
 
@@ -18,10 +15,9 @@ SELECT id FROM sitetrack.projects WHERE id = $1 AND deleted_at IS NULL FOR UPDAT
 SELECT id FROM sitetrack.projects WHERE id = $1 AND deleted_at IS NULL FOR SHARE;
 
 -- name: GetProject :one
-SELECT p.*, s.id AS store_id, COALESCE(m.is_admin, false)::boolean AS is_admin,
+SELECT p.*, COALESCE(m.is_admin, false)::boolean AS is_admin,
     (SELECT count(*) FROM sitetrack.project_memberships team WHERE team.project_id = p.id)::bigint AS member_count,summary.task_count,summary.not_started_count,summary.in_progress_count,summary.done_count,summary.late_count,summary.blocked_count,summary.completion_percentage
 FROM sitetrack.projects p
-JOIN sitetrack.project_stores s ON s.project_id = p.id
 JOIN sitetrack.users u ON u.id = sqlc.arg(actor)
 LEFT JOIN sitetrack.project_memberships m ON m.project_id = p.id AND m.user_id = u.id
 CROSS JOIN LATERAL (
@@ -37,10 +33,9 @@ CROSS JOIN LATERAL (
 WHERE p.id = sqlc.arg(id) AND p.deleted_at IS NULL AND (u.role = 'superadmin' OR m.user_id IS NOT NULL);
 
 -- name: ListProjects :many
-SELECT p.*, s.id AS store_id, COALESCE(m.is_admin, false)::boolean AS is_admin,
+SELECT p.*, COALESCE(m.is_admin, false)::boolean AS is_admin,
     (SELECT count(*) FROM sitetrack.project_memberships team WHERE team.project_id = p.id)::bigint AS member_count,summary.task_count,summary.not_started_count,summary.in_progress_count,summary.done_count,summary.late_count,summary.blocked_count,summary.completion_percentage
 FROM sitetrack.projects p
-JOIN sitetrack.project_stores s ON s.project_id = p.id
 JOIN sitetrack.users u ON u.id = sqlc.arg(actor)
 LEFT JOIN sitetrack.project_memberships m ON m.project_id = p.id AND m.user_id = u.id
 CROSS JOIN LATERAL (

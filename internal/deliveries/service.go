@@ -108,11 +108,11 @@ func lockMaterials(ctx context.Context, q *deliverydb.Queries, ids []uuid.UUID) 
 	}
 	return nil
 }
-func ensureInventory(ctx context.Context, q *deliverydb.Queries, store uuid.UUID, ids []uuid.UUID) error {
+func ensureInventory(ctx context.Context, q *deliverydb.Queries, project string, ids []uuid.UUID) error {
 	if err := q.EnsureCompanyInventory(ctx, ids); err != nil {
 		return err
 	}
-	return q.EnsureProjectInventory(ctx, deliverydb.EnsureProjectInventoryParams{StoreID: store, MaterialIds: ids})
+	return q.EnsureProjectInventory(ctx, deliverydb.EnsureProjectInventoryParams{ProjectID: project, MaterialIds: ids})
 }
 func notify(ctx context.Context, tx pgx.Tx, actor uuid.UUID, project, action string) error {
 	return notifications.Create(ctx, tx, notifications.Input{ProjectID: project, ActorID: actor, Kind: "delivery." + action, Title: "Delivery " + action, Message: "A delivery was " + action + " for " + project + "."}, nil)
@@ -147,14 +147,14 @@ func (s *Service) Create(ctx context.Context, actor uuid.UUID, input Input) (res
 	if err := lockMaterials(ctx, q, ids); err != nil {
 		return Delivery{}, err
 	}
-	if err := ensureInventory(ctx, q, access.StoreID, ids); err != nil {
+	if err := ensureInventory(ctx, q, input.ProjectID, ids); err != nil {
 		return Delivery{}, failure(err)
 	}
 	var changed int64
 	if company {
 		changed, err = q.SendCompanyStock(ctx, deliverydb.SendCompanyStockParams{MaterialIds: ids, Quantities: amounts})
 	} else {
-		changed, err = q.SendProjectStock(ctx, deliverydb.SendProjectStockParams{StoreID: access.StoreID, MaterialIds: ids, Quantities: amounts})
+		changed, err = q.SendProjectStock(ctx, deliverydb.SendProjectStockParams{ProjectID: input.ProjectID, MaterialIds: ids, Quantities: amounts})
 	}
 	if err != nil {
 		return Delivery{}, failure(err)
@@ -235,7 +235,7 @@ func (s *Service) Transition(ctx context.Context, actor, id uuid.UUID, action st
 	if companySender {
 		err = q.ReleaseCompanyStock(ctx, deliverydb.ReleaseCompanyStockParams{MaterialIds: ids, Quantities: amounts, ReturnStock: returned})
 	} else {
-		err = q.ReleaseProjectStock(ctx, deliverydb.ReleaseProjectStockParams{StoreID: access.StoreID, MaterialIds: ids, Quantities: amounts, ReturnStock: returned})
+		err = q.ReleaseProjectStock(ctx, deliverydb.ReleaseProjectStockParams{ProjectID: project, MaterialIds: ids, Quantities: amounts, ReturnStock: returned})
 	}
 	if err != nil {
 		return Delivery{}, failure(err)
@@ -247,7 +247,7 @@ func (s *Service) Transition(ctx context.Context, actor, id uuid.UUID, action st
 	if action == "receive" {
 		status = deliverydb.SitetrackDeliveryStatusDelivered
 		if companySender {
-			err = q.ReceiveProjectStock(ctx, deliverydb.ReceiveProjectStockParams{StoreID: access.StoreID, MaterialIds: ids, Quantities: amounts})
+			err = q.ReceiveProjectStock(ctx, deliverydb.ReceiveProjectStockParams{ProjectID: project, MaterialIds: ids, Quantities: amounts})
 		} else {
 			err = q.ReceiveCompanyStock(ctx, deliverydb.ReceiveCompanyStockParams{MaterialIds: ids, Quantities: amounts})
 		}
