@@ -235,7 +235,7 @@ CREATE TRIGGER reject_test_refresh BEFORE INSERT ON sitetrack.refresh_tokens FOR
 	}
 }
 
-func TestFailedLoginDoesNotRevealAccountStateOrReplaceSession(t *testing.T) {
+func TestFailedLoginAndUnverifiedAccountPreserveSession(t *testing.T) {
 	s, _, _ := accountTest(t)
 	input := verifiedAccount(t, s)
 	pair := loggedIn(t, s, input)
@@ -243,11 +243,14 @@ func TestFailedLoginDoesNotRevealAccountStateOrReplaceSession(t *testing.T) {
 	for _, attempt := range []LoginInput{
 		{Email: input.Email, Password: "wrong-password"},
 		{Email: "missing@example.test", Password: "sitetrack-login-dummy-not-an-account"},
-		{Email: unverified.Email, Password: unverified.Password},
+		{Email: unverified.Email, Password: "wrong-password"},
 	} {
 		if _, err := s.Login(context.Background(), attempt); !errors.Is(err, ErrInvalidCredentials) {
 			t.Fatal("login exposes different account states")
 		}
+	}
+	if _, err := s.Login(context.Background(), LoginInput{Email: unverified.Email, Password: unverified.Password}); !errors.Is(err, ErrEmailUnverified) {
+		t.Fatalf("unverified login = %v", err)
 	}
 	if _, err := s.Authenticate(context.Background(), pair.AccessToken); err != nil {
 		t.Fatal("failed login revoked the active session")

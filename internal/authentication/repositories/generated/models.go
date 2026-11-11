@@ -5,15 +5,70 @@
 package authenticationdb
 
 import (
+	"database/sql/driver"
+	"fmt"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type SitetrackAppRole string
+
+const (
+	SitetrackAppRoleUser                SitetrackAppRole = "user"
+	SitetrackAppRoleCompanyStoreManager SitetrackAppRole = "company_store_manager"
+	SitetrackAppRoleSuperadmin          SitetrackAppRole = "superadmin"
+)
+
+func (e *SitetrackAppRole) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = SitetrackAppRole(s)
+	case string:
+		*e = SitetrackAppRole(s)
+	default:
+		return fmt.Errorf("unsupported scan type for SitetrackAppRole: %T", src)
+	}
+	return nil
+}
+
+type NullSitetrackAppRole struct {
+	SitetrackAppRole SitetrackAppRole
+	Valid            bool // Valid is true if SitetrackAppRole is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullSitetrackAppRole) Scan(value interface{}) error {
+	if value == nil {
+		ns.SitetrackAppRole, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.SitetrackAppRole.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullSitetrackAppRole) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.SitetrackAppRole), nil
+}
 
 type SitetrackAuthSession struct {
 	ID        uuid.UUID
 	UserID    uuid.UUID
 	CreatedAt pgtype.Timestamptz
 	ExpiresAt pgtype.Timestamptz
+}
+
+type SitetrackPasswordReset struct {
+	UserID    uuid.UUID
+	TokenHash []byte
+	CreatedAt pgtype.Timestamptz
+	ExpiresAt pgtype.Timestamptz
+	UsedAt    pgtype.Timestamptz
+	Attempts  int16
 }
 
 type SitetrackRefreshToken struct {

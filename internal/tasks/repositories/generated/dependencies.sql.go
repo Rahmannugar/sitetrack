@@ -48,9 +48,9 @@ type ListDependenciesParams struct {
 
 type ListDependenciesRow struct {
 	PrerequisiteTaskID string
-	Status             string
+	Status             SitetrackDependencyStatus
 	Name               string
-	TaskStatus         string
+	TaskStatus         SitetrackTaskStatus
 }
 
 func (q *Queries) ListDependencies(ctx context.Context, arg ListDependenciesParams) ([]ListDependenciesRow, error) {
@@ -111,7 +111,7 @@ type ListRelationshipsParams struct {
 type ListRelationshipsRow struct {
 	ID     string
 	Name   string
-	Status string
+	Status SitetrackTaskStatus
 	Steps  int32
 }
 

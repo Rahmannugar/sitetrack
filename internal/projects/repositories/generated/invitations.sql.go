@@ -62,7 +62,7 @@ WHERE id=$1 AND project_id=$2 AND status='pending' RETURNING id, project_id, inv
 type FinishInvitationParams struct {
 	ID        uuid.UUID
 	ProjectID string
-	Status    string
+	Status    SitetrackInvitationStatus
 }
 
 func (q *Queries) FinishInvitation(ctx context.Context, arg FinishInvitationParams) (SitetrackProjectInvitation, error) {
@@ -122,7 +122,7 @@ func (q *Queries) InvitationProject(ctx context.Context, arg InvitationProjectPa
 
 const listInvitations = `-- name: ListInvitations :many
 SELECT id, project_id, inviter_id, invitee_id, status, created_at, completed_at FROM sitetrack.project_invitations WHERE project_id=$1
-AND ($2::text='' OR status=$2)
+AND ($2::text='' OR status=NULLIF($2::text,'')::sitetrack.invitation_status)
 AND ($3::timestamptz IS NULL OR (created_at,id)<($3,$4::uuid))
 ORDER BY created_at DESC,id DESC LIMIT $5
 `

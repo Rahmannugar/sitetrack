@@ -12,6 +12,18 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const cancelPasswordResetEmails = `-- name: CancelPasswordResetEmails :exec
+UPDATE sitetrack.outbox_events SET status = 'cancelled', payload = NULL,
+    lease_token = NULL, lease_until = NULL
+WHERE aggregate_id = $1 AND event_type = 'email.password_reset'
+    AND status IN ('pending', 'processing')
+`
+
+func (q *Queries) CancelPasswordResetEmails(ctx context.Context, aggregateID string) error {
+	_, err := q.db.Exec(ctx, cancelPasswordResetEmails, aggregateID)
+	return err
+}
+
 const cancelVerificationEmails = `-- name: CancelVerificationEmails :exec
 UPDATE sitetrack.outbox_events SET status = 'cancelled', payload = NULL,
     lease_token = NULL, lease_until = NULL
@@ -183,7 +195,7 @@ WHERE id = $1 AND lease_token = $2 AND status = 'processing'
 type RetryJobParams struct {
 	ID          uuid.UUID
 	LeaseToken  uuid.NullUUID
-	Status      string
+	Status      SitetrackOutboxStatus
 	AvailableAt pgtype.Timestamptz
 	ErrorCode   *string
 }

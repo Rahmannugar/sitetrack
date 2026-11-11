@@ -6,6 +6,7 @@ import (
 )
 
 var (
+	ErrForbidden = errors.New("project admin required")
 	ErrNotFound = errors.New("project or task not found")
 	ErrInvalid  = errors.New("invalid task request")
 	ErrConflict = errors.New("task change conflicts with current state")

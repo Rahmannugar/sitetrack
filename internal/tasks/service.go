@@ -61,9 +61,9 @@ func failure(err error) error {
 			case "dependency_cycle":
 				return fmt.Errorf("%w: dependency would create a cycle", ErrConflict)
 			case "dependency_started":
-				return fmt.Errorf("%w: started tasks require completed prerequisites", ErrConflict)
+				return fmt.Errorf("%w: started tasks require completed dependencies", ErrConflict)
 			case "task_blocked":
-				return fmt.Errorf("%w: task has unfinished prerequisites", ErrConflict)
+				return fmt.Errorf("%w: task has unfinished dependencies", ErrConflict)
 			case "task_reopen":
 				return fmt.Errorf("%w: a dependent task has already started", ErrConflict)
 			case "task_referenced":
@@ -92,7 +92,9 @@ func (s *Service) locked(ctx context.Context, actor uuid.UUID, project string, w
 		_, err = q.ShareProject(ctx, project)
 	}
 	if err == nil {
-		_, err = q.ProjectAccess(ctx, taskdb.ProjectAccessParams{ProjectID: project, Actor: actor})
+		var isAdmin bool
+		isAdmin, err = q.ProjectAccess(ctx, taskdb.ProjectAccessParams{ProjectID: project, Actor: actor})
+		if err == nil && write && !isAdmin { err = ErrForbidden }
 	}
 	if err != nil {
 		rollback(tx)
@@ -105,6 +107,7 @@ func task(row taskdb.GetTaskRow) Task {
 	if result.DependsOn == nil {
 		result.DependsOn = []string{}
 	}
+	if !row.IsAdmin { return result }
 	switch row.Status {
 	case "not_started":
 		if !row.Blocked {
@@ -119,8 +122,8 @@ func task(row taskdb.GetTaskRow) Task {
 	}
 	return result
 }
-func (s *Service) read(ctx context.Context, q *taskdb.Queries, project, id string) (Task, error) {
-	row, err := q.GetTask(ctx, taskdb.GetTaskParams{ProjectID: project, ID: id, Today: s.today()})
+func (s *Service) read(ctx context.Context, q *taskdb.Queries, project, id string, actor uuid.UUID) (Task, error) {
+	row, err := q.GetTask(ctx, taskdb.GetTaskParams{ProjectID: project, ID: id, Today: s.today(), Actor: actor})
 	return task(row), failure(err)
 }
 func (s *Service) Get(ctx context.Context, actor uuid.UUID, project, id string) (Task, error) {
@@ -131,7 +134,7 @@ func (s *Service) Get(ctx context.Context, actor uuid.UUID, project, id string) 
 		return Task{}, err
 	}
 	defer rollback(tx)
-	result, err := s.read(ctx, q, project, id)
+	result, err := s.read(ctx, q, project, id, actor)
 	if err != nil {
 		return Task{}, err
 	}
@@ -160,7 +163,7 @@ func (s *Service) Create(ctx context.Context, actor uuid.UUID, project string, i
 	if err = notify(ctx, tx, actor, project, id, "created"); err != nil {
 		return Task{}, err
 	}
-	result, err := s.read(ctx, q, project, id)
+	result, err := s.read(ctx, q, project, id, actor)
 	if err != nil {
 		return Task{}, err
 	}
@@ -174,7 +177,7 @@ func (s *Service) Update(ctx context.Context, actor uuid.UUID, project, id strin
 		return Task{}, err
 	}
 	defer rollback(tx)
-	if _, err = s.read(ctx, q, project, id); err != nil {
+	if _, err = s.read(ctx, q, project, id, actor); err != nil {
 		return Task{}, err
 	}
 	input, start, end, err := validate(input)
@@ -187,7 +190,7 @@ func (s *Service) Update(ctx context.Context, actor uuid.UUID, project, id strin
 	if err = notify(ctx, tx, actor, project, id, "updated"); err != nil {
 		return Task{}, err
 	}
-	result, err := s.read(ctx, q, project, id)
+	result, err := s.read(ctx, q, project, id, actor)
 	if err != nil {
 		return Task{}, err
 	}
@@ -201,7 +204,7 @@ func (s *Service) Remove(ctx context.Context, actor uuid.UUID, project, id strin
 		return err
 	}
 	defer rollback(tx)
-	row, err := s.read(ctx, q, project, id)
+	row, err := s.read(ctx, q, project, id, actor)
 	if err != nil {
 		return err
 	}
@@ -227,7 +230,7 @@ func (s *Service) Transition(ctx context.Context, actor uuid.UUID, project, id, 
 		return Task{}, err
 	}
 	defer rollback(tx)
-	current, err := s.read(ctx, q, project, id)
+	current, err := s.read(ctx, q, project, id, actor)
 	if err != nil {
 		return Task{}, err
 	}
@@ -257,7 +260,7 @@ func (s *Service) Transition(ctx context.Context, actor uuid.UUID, project, id, 
 	if err = notify(ctx, tx, actor, project, id, action); err != nil {
 		return Task{}, err
 	}
-	result, err := s.read(ctx, q, project, id)
+	result, err := s.read(ctx, q, project, id, actor)
 	if err != nil {
 		return Task{}, err
 	}

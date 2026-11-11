@@ -5,7 +5,7 @@ SELECT id FROM sitetrack.projects WHERE id=$1 AND deleted_at IS NULL FOR UPDATE;
 SELECT id FROM sitetrack.projects WHERE id=$1 AND deleted_at IS NULL FOR SHARE;
 
 -- name: ProjectAccess :one
-SELECT u.id FROM sitetrack.users u LEFT JOIN sitetrack.project_memberships m ON m.user_id=u.id AND m.project_id=sqlc.arg(project_id)
+SELECT COALESCE(m.is_admin,false)::boolean AS is_admin FROM sitetrack.users u LEFT JOIN sitetrack.project_memberships m ON m.user_id=u.id AND m.project_id=sqlc.arg(project_id)
 WHERE u.id=sqlc.arg(actor) AND (u.role='superadmin' OR m.user_id IS NOT NULL);
 
 -- name: NextTaskNumber :one
@@ -26,9 +26,9 @@ UPDATE sitetrack.tasks SET deleted_at=clock_timestamp() WHERE project_id=$1 AND 
 -- name: RemoveTaskDependencies :exec
 DELETE FROM sitetrack.task_dependencies WHERE project_id=$1 AND dependent_task_id=$2;
 
--- We require completed prerequisites on started tasks, so direct waiting edges are sufficient for Blocked.
+-- We require completed dependencies on started tasks, so direct waiting dependencies determine Blocked.
 -- name: GetTask :one
-SELECT t.*, (t.status<>'done' AND (t.end_date<sqlc.arg(today)::date OR (t.status='not_started' AND t.start_date<sqlc.arg(today))))::boolean AS late,
+SELECT t.*, EXISTS(SELECT 1 FROM sitetrack.project_memberships m WHERE m.project_id=t.project_id AND m.user_id=sqlc.arg(actor) AND m.is_admin)::boolean AS is_admin, (t.status<>'done' AND (t.end_date<sqlc.arg(today)::date OR (t.status='not_started' AND t.start_date<sqlc.arg(today))))::boolean AS late,
     (t.status<>'done' AND EXISTS(SELECT 1 FROM sitetrack.task_dependencies d WHERE d.dependent_task_id=t.id AND d.status='waiting'))::boolean AS blocked,
     (SELECT count(*) FROM sitetrack.task_dependencies d WHERE d.dependent_task_id=t.id)::bigint AS dependency_count,
     (SELECT count(*) FROM sitetrack.task_dependencies d WHERE d.prerequisite_task_id=t.id)::bigint AS dependent_count,
@@ -38,7 +38,7 @@ FROM sitetrack.tasks t WHERE t.project_id=sqlc.arg(project_id) AND t.id=sqlc.arg
 
 -- name: ListTasks :many
 WITH candidates AS (
-SELECT t.*, (t.status<>'done' AND (t.end_date<sqlc.arg(today)::date OR (t.status='not_started' AND t.start_date<sqlc.arg(today))))::boolean AS late,
+SELECT t.*, EXISTS(SELECT 1 FROM sitetrack.project_memberships m WHERE m.project_id=t.project_id AND m.user_id=sqlc.arg(actor) AND m.is_admin)::boolean AS is_admin, (t.status<>'done' AND (t.end_date<sqlc.arg(today)::date OR (t.status='not_started' AND t.start_date<sqlc.arg(today))))::boolean AS late,
     (t.status<>'done' AND EXISTS(SELECT 1 FROM sitetrack.task_dependencies d WHERE d.dependent_task_id=t.id AND d.status='waiting'))::boolean AS blocked,
     (SELECT count(*) FROM sitetrack.task_dependencies d WHERE d.dependent_task_id=t.id)::bigint AS dependency_count,
     (SELECT count(*) FROM sitetrack.task_dependencies d WHERE d.prerequisite_task_id=t.id)::bigint AS dependent_count,
@@ -47,7 +47,7 @@ SELECT t.*, (t.status<>'done' AND (t.end_date<sqlc.arg(today)::date OR (t.status
 FROM sitetrack.tasks t WHERE t.project_id=sqlc.arg(project_id) AND t.deleted_at IS NULL
 )
 SELECT * FROM candidates t
-WHERE (sqlc.arg(status)::text='' OR t.status=sqlc.arg(status))
+WHERE (sqlc.arg(status)::text='' OR t.status=NULLIF(sqlc.arg(status)::text,'')::sitetrack.task_status)
 AND (sqlc.arg(search)::text='' OR position(lower(sqlc.arg(search)) in lower(t.name))>0 OR position(lower(sqlc.arg(search)) in lower(t.id))>0)
 AND (sqlc.narg(late)::boolean IS NULL OR t.late=sqlc.narg(late))
 AND (sqlc.narg(blocked)::boolean IS NULL OR t.blocked=sqlc.narg(blocked))

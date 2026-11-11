@@ -30,6 +30,8 @@ type Accounts interface {
 	Refresh(context.Context, string) (TokenPair, error)
 	Authenticate(context.Context, string) (Principal, error)
 	Logout(context.Context, Principal) error
+	ForgotPassword(context.Context, string) error
+	ResetPassword(context.Context, ResetPasswordInput) error
 }
 
 type Service struct {
@@ -93,7 +95,7 @@ func (s *Service) Signup(ctx context.Context, input SignupInput) error {
 		ID: id, Name: input.Name, Email: email, PasswordHash: hash, Role: input.Role,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return tx.Commit(ctx)
+		return ErrEmailRegistered
 	}
 	if err != nil {
 		return err

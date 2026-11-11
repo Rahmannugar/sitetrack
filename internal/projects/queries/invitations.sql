@@ -17,7 +17,7 @@ WHERE id=$1 AND project_id=$2 AND status='pending' RETURNING *;
 
 -- name: ListInvitations :many
 SELECT * FROM sitetrack.project_invitations WHERE project_id=sqlc.arg(project_id)
-AND (sqlc.arg(status)::text='' OR status=sqlc.arg(status))
+AND (sqlc.arg(status)::text='' OR status=NULLIF(sqlc.arg(status)::text,'')::sitetrack.invitation_status)
 AND (sqlc.narg(after_time)::timestamptz IS NULL OR (created_at,id)<(sqlc.narg(after_time),sqlc.narg(after_id)::uuid))
 ORDER BY created_at DESC,id DESC LIMIT sqlc.arg(page_size);
 

@@ -34,6 +34,10 @@ func Register(router *gin.RouterGroup, accounts Accounts, contracts *openapi.Reg
 	if err != nil {
 		return err
 	}
+	reset, err := request.NewBody[ResetPasswordInput]()
+	if err != nil {
+		return err
+	}
 	group := router.Group("/auth")
 	for _, endpoint := range []struct {
 		path      string
@@ -52,7 +56,7 @@ func Register(router *gin.RouterGroup, accounts Accounts, contracts *openapi.Reg
 					accountError(c, logger, err)
 					return
 				}
-				c.JSON(http.StatusAccepted, messageResponse{Message: "Check your email for a verification code."})
+				c.JSON(http.StatusCreated, messageResponse{Message: "Check your email for a verification code."})
 			}},
 		{"/verify-email", ratelimit.Policy{RequestsPerSecond: 2, Burst: 5, RequestsPerWindow: 30, Window: time.Minute},
 			verifyContract(verify.Schema), func(c *gin.Context) {
@@ -66,6 +70,32 @@ func Register(router *gin.RouterGroup, accounts Accounts, contracts *openapi.Reg
 					return
 				}
 				c.JSON(http.StatusOK, messageResponse{Message: "Email verified."})
+			}},
+		{"/forgot-password", ratelimit.Policy{RequestsPerSecond: 1, Burst: 2, RequestsPerWindow: 5, Window: time.Hour},
+			forgotPasswordContract(resend.Schema), func(c *gin.Context) {
+				input, err := resend.Decode(c)
+				if err != nil {
+					accountError(c, logger, err)
+					return
+				}
+				if err := accounts.ForgotPassword(c.Request.Context(), input.Email); err != nil {
+					accountError(c, logger, err)
+					return
+				}
+				c.JSON(http.StatusAccepted, messageResponse{Message: "Check your email for a password reset code."})
+			}},
+		{"/reset-password", ratelimit.Policy{RequestsPerSecond: 1, Burst: 3, RequestsPerWindow: 10, Window: time.Minute},
+			resetPasswordContract(reset.Schema), func(c *gin.Context) {
+				input, err := reset.Decode(c)
+				if err != nil {
+					accountError(c, logger, err)
+					return
+				}
+				if err := accounts.ResetPassword(c.Request.Context(), input); err != nil {
+					accountError(c, logger, err)
+					return
+				}
+				c.JSON(http.StatusOK, messageResponse{Message: "Password reset. Log in with your new password."})
 			}},
 		{"/resend-verification", ratelimit.Policy{RequestsPerSecond: 1, Burst: 2, RequestsPerWindow: 5, Window: time.Hour},
 			resendContract(resend.Schema), func(c *gin.Context) {
@@ -93,6 +123,14 @@ func Register(router *gin.RouterGroup, accounts Accounts, contracts *openapi.Reg
 }
 
 func accountError(c *gin.Context, logger *slog.Logger, err error) {
+	if errors.Is(err, ErrEmailRegistered) {
+		c.JSON(http.StatusConflict, errorResponse{Error: err.Error()})
+		return
+	}
+	if errors.Is(err, ErrEmailUnverified) {
+		c.JSON(http.StatusForbidden, errorResponse{Error: err.Error()})
+		return
+	}
 	if errors.Is(err, ErrUnauthenticated) || errors.Is(err, ErrInvalidCredentials) {
 		c.Header("WWW-Authenticate", "Bearer")
 		c.JSON(http.StatusUnauthorized, errorResponse{Error: err.Error()})
@@ -102,7 +140,7 @@ func accountError(c *gin.Context, logger *slog.Logger, err error) {
 		c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request body"})
 		return
 	}
-	if errors.Is(err, ErrInvalidInput) || errors.Is(err, ErrInvalidVerification) {
+	if errors.Is(err, ErrInvalidInput) || errors.Is(err, ErrInvalidVerification) || errors.Is(err, ErrInvalidReset) {
 		c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
 		return
 	}

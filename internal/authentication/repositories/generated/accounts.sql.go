@@ -59,7 +59,7 @@ type CreateUserParams struct {
 	Name         string
 	Email        string
 	PasswordHash string
-	Role         string
+	Role         SitetrackAppRole
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (uuid.UUID, error) {

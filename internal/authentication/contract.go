@@ -10,11 +10,12 @@ import (
 
 func signupContract(schema *jsonschema.Schema) openapi.Operation {
 	responses := accountErrorContracts()
-	responses["202"] = messageContract("Registration accepted without disclosing whether the email is registered.", `{"message":"Check your email for a verification code."}`)
+	responses["201"] = messageContract("Account created. Check your email for the verification code.", `{"message":"Check your email for a verification code."}`)
+	responses["409"] = errorContract("Email already registered.", map[string]string{"registered": "email already registered"})
 	responses["400"] = errorContract("Invalid registration request.", map[string]string{
 		"body": "invalid request body", "details": "invalid account details",
 	})
-	return accountContract("signup", "Register an account and queue its verification email", schema, responses)
+	return accountContract("signup", "Create an account", schema, responses)
 }
 
 func verifyContract(schema *jsonschema.Schema) openapi.Operation {
@@ -28,9 +29,23 @@ func verifyContract(schema *jsonschema.Schema) openapi.Operation {
 
 func resendContract(schema *jsonschema.Schema) openapi.Operation {
 	responses := accountErrorContracts()
-	responses["202"] = messageContract("The request is accepted without disclosing account or cooldown state.", `{"message":"Check your email for a verification code."}`)
+	responses["202"] = messageContract("Check your email for a verification code.", `{"message":"Check your email for a verification code."}`)
 	responses["400"] = errorContract("Invalid email verification request.", map[string]string{"body": "invalid request body"})
 	return accountContract("resendVerification", "Request another email verification code", schema, responses)
+}
+
+func forgotPasswordContract(schema *jsonschema.Schema) openapi.Operation {
+	responses := accountErrorContracts()
+	responses["202"] = messageContract("Check your email for a password reset code.", `{"message":"Check your email for a password reset code."}`)
+	responses["400"] = errorContract("Invalid email.", map[string]string{"body": "invalid request body", "details": "invalid account details"})
+	return accountContract("forgotPassword", "Request a password reset code", schema, responses)
+}
+
+func resetPasswordContract(schema *jsonschema.Schema) openapi.Operation {
+	responses := accountErrorContracts()
+	responses["200"] = messageContract("Password changed and you are logged out. Log in with your new password.", `{"message":"Password reset. Log in with your new password."}`)
+	responses["400"] = errorContract("Invalid password or reset code.", map[string]string{"body": "invalid request body", "details": "invalid account details", "code": "invalid or expired password reset code"})
+	return accountContract("resetPassword", "Reset your password using the OTP", schema, responses)
 }
 
 func accountContract(id, summary string, schema *jsonschema.Schema, responses map[string]openapi.Response) openapi.Operation {

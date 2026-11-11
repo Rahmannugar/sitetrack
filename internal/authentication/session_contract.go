@@ -10,20 +10,21 @@ import (
 
 func loginContract(schema *jsonschema.Schema) openapi.Operation {
 	responses := sessionErrors("invalid email or password")
-	responses["200"] = tokenContract("A new session replaces the account's previous session. Email verification is required.")
-	return accountContract("login", "Log in and replace the previous session", schema, responses)
+	responses["403"] = errorContract("Email verification required.", map[string]string{"unverified": "verify your email before logging in"})
+	responses["200"] = tokenContract("Logged in. Any previous session is logged out.")
+	return accountContract("login", "Log in", schema, responses)
 }
 
 func refreshContract(schema *jsonschema.Schema) openapi.Operation {
 	responses := sessionErrors("authentication required")
-	responses["200"] = tokenContract("Rotate the single-use refresh token and extend the same session by seven days, up to thirty days from login. Reuse revokes the session; clients must serialize refresh requests.")
-	return accountContract("refresh", "Renew JWT access and rotate the refresh token", schema, responses)
+	responses["200"] = tokenContract("Session renewed for seven days, up to thirty days from login. Each refresh token works once; reusing it logs you out.")
+	return accountContract("refresh", "Refresh your session", schema, responses)
 }
 
 func profileContract() openapi.Operation {
 	responses := sessionErrors("authentication required")
 	delete(responses, "400")
-	responses["200"] = openapi.Response{Description: "The current account profile and current app role.", Content: map[string]openapi.MediaType{
+	responses["200"] = openapi.Response{Description: "Your profile and app role.", Content: map[string]openapi.MediaType{
 		"application/json": {Schema: profileSchema(), Examples: map[string]openapi.Example{"profile": {Summary: "Verified account", Value: profileExample}}},
 	}}
 	operation := accountContract("profile", "Read your profile", nil, responses)
@@ -34,8 +35,8 @@ func profileContract() openapi.Operation {
 func logoutContract() openapi.Operation {
 	responses := sessionErrors("authentication required")
 	delete(responses, "400")
-	responses["200"] = messageContract("The current session and all its refresh tokens stop working immediately.", `{"message":"Logged out."}`)
-	operation := accountContract("logout", "Revoke your current session", nil, responses)
+	responses["200"] = messageContract("Logged out.", `{"message":"Logged out."}`)
+	operation := accountContract("logout", "Log out", nil, responses)
 	operation.Security = []map[string][]string{{"bearerAuth": {}}}
 	return operation
 }
@@ -43,7 +44,7 @@ func logoutContract() openapi.Operation {
 func sessionErrors(message string) map[string]openapi.Response {
 	responses := accountErrorContracts()
 	responses["400"] = errorContract("Invalid request body.", map[string]string{"body": "invalid request body"})
-	responses["401"] = errorContract("Authentication was not accepted.", map[string]string{"unauthorized": message})
+	responses["401"] = errorContract("Log in to continue.", map[string]string{"unauthorized": message})
 	return responses
 }
 
@@ -63,7 +64,7 @@ func tokenContract(description string) openapi.Response {
 			"access_token": {Type: "string"}, "access_token_expires_at": {Type: "string", Format: "date-time"},
 			"refresh_token": {Type: "string", MinLength: &refreshLength, MaxLength: &refreshLength}, "refresh_token_expires_at": {Type: "string", Format: "date-time"},
 			"token_type": {Type: "string", Pattern: "^Bearer$"}, "user": profileSchema(),
-		}}, Examples: map[string]openapi.Example{"tokens": {Summary: "JWT access and opaque refresh token", Value: json.RawMessage(`{
+		}}, Examples: map[string]openapi.Example{"tokens": {Summary: "Login tokens", Value: json.RawMessage(`{
 "access_token":"eyJhbGciOiJFZERTQSJ9.eyJzdWIiOiIwMTlmMmFhMC03MDAwLTcwMDAtODAwMC0wMDAwMDAwMDAwMDEifQ.c2lnbmF0dXJl",
 "access_token_expires_at":"2026-11-10T12:15:00Z",
 "refresh_token":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",

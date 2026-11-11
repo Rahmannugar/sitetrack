@@ -70,8 +70,11 @@ func (s *Service) Login(ctx context.Context, input LoginInput) (TokenPair, error
 	if err != nil {
 		return TokenPair{}, err
 	}
-	if lookupErr != nil || !checked.Matches || !user.EmailVerified {
+	if lookupErr != nil || !checked.Matches {
 		return TokenPair{}, ErrInvalidCredentials
+	}
+	if !user.EmailVerified {
+		return TokenPair{}, ErrEmailUnverified
 	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {

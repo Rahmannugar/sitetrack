@@ -46,64 +46,64 @@ func operation(id, summary string, body, path, query *jsonschema.Schema) openapi
 }
 func createContract(body, path *jsonschema.Schema) openapi.Operation {
 	op := operation("createTask", "Create a project task", body, path, nil)
-	op.Responses["201"] = response("Members and SuperAdmins create tasks. Immutable task codes count up within the project and are never reused. Dates require end on or after start. Notification rows commit with the task.", taskSchema(), taskExample)
+	op.Responses["201"] = response("Task created. Its code is never changed or reused.", taskSchema(), taskExample)
 	return op
 }
 func getContract(path *jsonschema.Schema) openapi.Operation {
 	op := operation("getTask", "Read a task and its allowed actions", nil, path, nil)
 	delete(op.Responses, "409")
-	op.Responses["200"] = response("Late uses today's UTC date. Blocked reflects unfinished prerequisites. depends_on contains the first twenty direct prerequisite codes; dependency_count and has_more_dependencies identify additional rows available through the dependencies endpoint. Allowed actions reflect current state and graph constraints.", taskSchema(), taskExample)
+	op.Responses["200"] = response("Task details and the actions you can take now. Late uses the UTC date. Blocked means a prerequisite is unfinished. depends_on previews up to 20 prerequisites; use the dependencies endpoint for the rest.", taskSchema(), taskExample)
 	return op
 }
 func listContract(path, query *jsonschema.Schema) openapi.Operation {
 	op := operation("listTasks", "List project tasks", nil, path, query)
 	delete(op.Responses, "409")
-	op.Responses["200"] = response("Default twenty, maximum one hundred. Filter status, Late, Blocked and inclusive planned-interval overlap with from_date/to_date. Sort id/name/start_date/end_date/dependent_count, ascending or descending with id as tie-breaker. Continue with the same filters and sort. Cursors expire when the UTC date changes. Depends-on previews are bounded to twenty.", pageSchema(taskSchema()), json.RawMessage(`{"items":[`+string(taskExample)+`],"next_cursor":""}`))
+	op.Responses["200"] = response("Filter by status, late, blocked, search or planned dates. Dates select tasks whose planned period overlaps the range. Pages default to 20, maximum 100. Keep the same filters and sort with next_cursor; start a new list after the UTC date changes.", pageSchema(taskSchema()), json.RawMessage(`{"items":[`+string(taskExample)+`],"next_cursor":""}`))
 	return op
 }
 func updateContract(body, path *jsonschema.Schema) openapi.Operation {
 	op := operation("updateTask", "Replace task name and planned dates", body, path, nil)
-	op.Responses["200"] = response("Task details updated; code and state stay unchanged. Status, Late and Blocked are not accepted as input.", taskSchema(), taskExample)
+	op.Responses["200"] = response("Task name and dates updated. Use the task actions to change status.", taskSchema(), taskExample)
 	return op
 }
 func removeContract(path *jsonschema.Schema) openapi.Operation {
 	op := operation("removeTask", "Remove a task", nil, path, nil)
-	op.Responses["204"] = openapi.Response{Description: "The task is hidden and its code retained. Outgoing dependencies are removed atomically. Referenced tasks cannot be removed until incoming dependency links are detached."}
+	op.Responses["204"] = openapi.Response{Description: "Task removed. Remove links from tasks that depend on it first. Its code is never reused."}
 	return op
 }
 func transitionContract(path *jsonschema.Schema, action string) openapi.Operation {
-	op := operation("taskAction_"+action, "Apply task action: "+action, nil, path, nil)
+	op := operation("taskAction_"+action, map[string]string{"start": "Start a task", "done": "Mark a task as done", "reopen": "Reopen a task"}[action], nil, path, nil)
 	example := `{"id":"PRJ-0001-T-0001","project_id":"PRJ-0001","name":"Pour slab","start_date":"2026-11-10","end_date":"2026-11-20","status":"in_progress","late":false,"blocked":false,"depends_on":[],"dependency_count":0,"dependent_count":0,"has_more_dependencies":false,"allowed_actions":["done"],"created_at":"2026-11-10T12:00:00Z"}`
-	description := "Start requires Not started and all reachable prerequisites done."
+	description := "Start a task that has not started. All its prerequisites must be done."
 	if action == "done" {
-		description = "Mark as done requires In progress; dependent links become satisfied in the same transaction."
+		description = "Complete an in-progress task. Its dependency links become satisfied in the same transaction."
 		example = `{"id":"PRJ-0001-T-0001","project_id":"PRJ-0001","name":"Pour slab","start_date":"2026-11-10","end_date":"2026-11-20","status":"done","late":false,"blocked":false,"depends_on":[],"dependency_count":0,"dependent_count":0,"has_more_dependencies":false,"allowed_actions":["reopen"],"created_at":"2026-11-10T12:00:00Z"}`
 	}
 	if action == "reopen" {
-		description = "Reopen requires Done and no started direct or transitive dependent. Dependency state returns to waiting atomically."
+		description = "Reopen a completed task if none of the tasks depending on it have started, including through other tasks. Its dependency links return to waiting in the same transaction."
 	}
 	op.Responses["200"] = response(description, taskSchema(), json.RawMessage(example))
 	return op
 }
 func addDependencyContract(body, path *jsonschema.Schema) openapi.Operation {
 	op := operation("addTaskDependency", "Add a prerequisite", body, path, nil)
-	op.Responses["201"] = response("Both tasks must be active in the same project. Self-links, duplicates and cycles are rejected. Started/done tasks cannot gain unfinished prerequisites. Stored status is waiting until the prerequisite is done, then satisfied; clients cannot set it.", dependencySchema(), dependencyExample)
+	op.Responses["201"] = response("Add a prerequisite from the same project. Dependencies cannot form a cycle. A started or completed task cannot gain an unfinished prerequisite. Status is waiting or satisfied, based on whether the prerequisite is done.", dependencySchema(), dependencyExample)
 	return op
 }
 func removeDependencyContract(path *jsonschema.Schema) openapi.Operation {
 	op := operation("removeTaskDependency", "Remove a prerequisite", nil, path, nil)
-	op.Responses["204"] = openapi.Response{Description: "Dependency removed and task activity notification created in the same transaction."}
+	op.Responses["204"] = openapi.Response{Description: "Prerequisite removed."}
 	return op
 }
 func dependenciesContract(path, query *jsonschema.Schema) openapi.Operation {
-	op := operation("listTaskDependencies", "List direct prerequisites", nil, path, query)
+	op := operation("listTaskDependencies", "List task prerequisites", nil, path, query)
 	delete(op.Responses, "409")
-	op.Responses["200"] = response("Direct prerequisite codes, stored dependency state and current prerequisite task state. Ordered by prerequisite code, default twenty and maximum one hundred.", pageSchema(dependencySchema()), json.RawMessage(`{"items":[`+string(dependencyExample)+`],"next_cursor":""}`))
+	op.Responses["200"] = response("Tasks this task depends on directly, with their task and dependency status. Ordered by code. Pages default to 20, maximum 100.", pageSchema(dependencySchema()), json.RawMessage(`{"items":[`+string(dependencyExample)+`],"next_cursor":""}`))
 	return op
 }
 func relationshipsContract(path, query *jsonschema.Schema) openapi.Operation {
-	op := operation("listTaskRelationships", "List reachable prerequisites or dependents", nil, path, query)
+	op := operation("listTaskRelationships", "List all prerequisites or dependent tasks", nil, path, query)
 	delete(op.Responses, "409")
-	op.Responses["200"] = response("Every reachable task appears once, with its shortest distance in steps. Choose prerequisites (default) or dependents. Ordered by steps then code; cursor pages default to twenty, maximum one hundred.", pageSchema(relationSchema()), json.RawMessage(`{"items":[{"id":"PRJ-0001-T-0001","name":"Pour slab","status":"not_started","steps":1}],"next_cursor":""}`))
+	op.Responses["200"] = response("Choose prerequisites (default) for everything this task waits on, or dependents for every task waiting on it. Includes links through other tasks. Each task appears once, with the fewest dependency steps between them. Pages default to 20, maximum 100, ordered by steps then code.", pageSchema(relationSchema()), json.RawMessage(`{"items":[{"id":"PRJ-0001-T-0001","name":"Pour slab","status":"not_started","steps":1}],"next_cursor":""}`))
 	return op
 }

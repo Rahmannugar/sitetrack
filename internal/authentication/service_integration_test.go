@@ -23,21 +23,23 @@ import (
 )
 
 type captureEmail struct {
-	mu   sync.Mutex
-	keys []string
-	err  error
+	mu       sync.Mutex
+	keys     []string
+	messages []email.Message
+	err      error
 }
 
-func (s *captureEmail) Send(_ context.Context, _ email.Message, key string) (string, error) {
+func (s *captureEmail) Send(_ context.Context, message email.Message, key string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.keys = append(s.keys, key)
+	s.messages = append(s.messages, message)
 	return "provider-message", s.err
 }
 
 type verificationTestWorker struct {
 	*outbox.Worker
-	verification *VerificationWorker
+	verification *EmailWorker
 	queries      *outboxdb.Queries
 }
 
@@ -70,8 +72,8 @@ func accountTest(t *testing.T) (*Service, *verificationTestWorker, *captureEmail
 		t.Fatal(err)
 	}
 	sender := &captureEmail{}
-	verification := NewVerificationWorker(pool, service.cipher, sender, monitoring)
-	runner, err := outbox.NewWorker(pool, map[string]outbox.Handler{"email.verification": verification.Handle}, verification.CleanupOTPs, monitoring)
+	verification := NewEmailWorker(pool, service.cipher, sender, monitoring)
+	runner, err := outbox.NewWorker(pool, map[string]outbox.Handler{"email.verification": verification.HandleVerification, "email.password_reset": verification.HandlePasswordReset}, verification.CleanupOTPs, monitoring)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,8 +247,8 @@ func TestConcurrentRegistrationCreatesOneAccountAndEmail(t *testing.T) {
 	var group sync.WaitGroup
 	for range 4 {
 		group.Go(func() {
-			if err := s.Signup(context.Background(), input); err != nil {
-				t.Error(err)
+			if err := s.Signup(context.Background(), input); !errors.Is(err, ErrEmailRegistered) {
+				t.Errorf("duplicate signup = %v", err)
 			}
 		})
 	}

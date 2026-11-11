@@ -19,6 +19,12 @@ UPDATE sitetrack.outbox_events AS e SET status = 'failed', payload = NULL,
     error_code = 'expired_or_exhausted', lease_token = NULL, lease_until = NULL
 FROM expired WHERE e.id = expired.id;
 
+-- name: CancelPasswordResetEmails :exec
+UPDATE sitetrack.outbox_events SET status = 'cancelled', payload = NULL,
+    lease_token = NULL, lease_until = NULL
+WHERE aggregate_id = $1 AND event_type = 'email.password_reset'
+    AND status IN ('pending', 'processing');
+
 -- name: ClaimJobs :many
 WITH candidate AS (
     SELECT id FROM sitetrack.outbox_events

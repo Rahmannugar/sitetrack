@@ -40,7 +40,7 @@ type ListNotificationsRow struct {
 	Message          string
 	ReadAt           pgtype.Timestamptz
 	CreatedAt        pgtype.Timestamptz
-	InvitationStatus *string
+	InvitationStatus *SitetrackInvitationStatus
 }
 
 func (q *Queries) ListNotifications(ctx context.Context, arg ListNotificationsParams) ([]ListNotificationsRow, error) {
@@ -105,7 +105,7 @@ type NotificationChangesRow struct {
 	Message          string
 	ReadAt           pgtype.Timestamptz
 	CreatedAt        pgtype.Timestamptz
-	InvitationStatus *string
+	InvitationStatus *SitetrackInvitationStatus
 	Visible          bool
 }
 

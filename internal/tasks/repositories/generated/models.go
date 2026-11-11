@@ -4,9 +4,99 @@
 
 package tasksdb
 
+import (
+	"database/sql/driver"
+	"fmt"
+)
+
+type SitetrackDependencyStatus string
+
+const (
+	SitetrackDependencyStatusWaiting   SitetrackDependencyStatus = "waiting"
+	SitetrackDependencyStatusSatisfied SitetrackDependencyStatus = "satisfied"
+)
+
+func (e *SitetrackDependencyStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = SitetrackDependencyStatus(s)
+	case string:
+		*e = SitetrackDependencyStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for SitetrackDependencyStatus: %T", src)
+	}
+	return nil
+}
+
+type NullSitetrackDependencyStatus struct {
+	SitetrackDependencyStatus SitetrackDependencyStatus
+	Valid                     bool // Valid is true if SitetrackDependencyStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullSitetrackDependencyStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.SitetrackDependencyStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.SitetrackDependencyStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullSitetrackDependencyStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.SitetrackDependencyStatus), nil
+}
+
+type SitetrackTaskStatus string
+
+const (
+	SitetrackTaskStatusNotStarted SitetrackTaskStatus = "not_started"
+	SitetrackTaskStatusInProgress SitetrackTaskStatus = "in_progress"
+	SitetrackTaskStatusDone       SitetrackTaskStatus = "done"
+)
+
+func (e *SitetrackTaskStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = SitetrackTaskStatus(s)
+	case string:
+		*e = SitetrackTaskStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for SitetrackTaskStatus: %T", src)
+	}
+	return nil
+}
+
+type NullSitetrackTaskStatus struct {
+	SitetrackTaskStatus SitetrackTaskStatus
+	Valid               bool // Valid is true if SitetrackTaskStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullSitetrackTaskStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.SitetrackTaskStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.SitetrackTaskStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullSitetrackTaskStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.SitetrackTaskStatus), nil
+}
+
 type SitetrackTaskDependency struct {
 	ProjectID          string
 	DependentTaskID    string
 	PrerequisiteTaskID string
-	Status             string
+	Status             SitetrackDependencyStatus
 }

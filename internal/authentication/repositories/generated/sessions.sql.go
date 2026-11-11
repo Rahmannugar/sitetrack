@@ -105,7 +105,7 @@ type GetCurrentSessionRow struct {
 	ExpiresAt     pgtype.Timestamptz
 	Name          string
 	Email         string
-	Role          string
+	Role          SitetrackAppRole
 	EmailVerified bool
 }
 
@@ -135,7 +135,7 @@ type GetLoginUserRow struct {
 	Name          string
 	Email         string
 	PasswordHash  string
-	Role          string
+	Role          SitetrackAppRole
 	EmailVerified bool
 }
 
@@ -188,7 +188,7 @@ type LockLoginUserRow struct {
 	Name          string
 	Email         string
 	PasswordHash  string
-	Role          string
+	Role          SitetrackAppRole
 	EmailVerified bool
 }
 

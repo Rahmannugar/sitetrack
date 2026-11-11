@@ -37,10 +37,10 @@ func projectOperation(id, summary string, body *jsonschema.Schema, path *jsonsch
 		responses[entry.code] = response(entry.description, &jsonschema.Schema{Type: "object", Required: []string{"error"}, Properties: map[string]*jsonschema.Schema{"error": {Type: "string"}}}, example)
 	}
 	if path != nil {
-		responses["404"] = response("The project or member does not exist or is inaccessible.", errorSchema(), json.RawMessage(`{"error":"project or member not found"}`))
+		responses["404"] = response("Project or member not found.", errorSchema(), json.RawMessage(`{"error":"project or member not found"}`))
 	}
 	if admin {
-		responses["403"] = response("Only a project admin may perform this operation, including for SuperAdmins.", errorSchema(), json.RawMessage(`{"error":"project admin required"}`))
+		responses["403"] = response("Project admin required.", errorSchema(), json.RawMessage(`{"error":"project admin required"}`))
 	}
 	op := openapi.Operation{OperationID: id, Summary: summary, Tags: []string{"Projects"}, Security: []map[string][]string{{"bearerAuth": {}}}, Responses: responses}
 	if body != nil {
@@ -55,32 +55,32 @@ func errorSchema() *jsonschema.Schema {
 	return &jsonschema.Schema{Type: "object", Required: []string{"error"}, Properties: map[string]*jsonschema.Schema{"error": {Type: "string"}}}
 }
 func createContract(body *jsonschema.Schema) openapi.Operation {
-	op := projectOperation("createProject", "Create a project with its store and creator admin", body, nil, false)
-	op.Responses["201"] = response("Project created atomically. Codes are immutable, sequential and never reused; failed creations may leave gaps. Planned end must be on or after planned start.", projectSchema(), projectExample)
+	op := projectOperation("createProject", "Create a project", body, nil, false)
+	op.Responses["201"] = response("Project created with its store. You are its first admin.", projectSchema(), projectExample)
 	return op
 }
 func readContract(path *jsonschema.Schema) openapi.Operation {
-	op := projectOperation("getProject", "Read an accessible project", nil, path, false)
-	op.Responses["200"] = response("Members and SuperAdmins can read active projects. Admin status describes the caller's actual membership.", projectSchema(), projectExample)
+	op := projectOperation("getProject", "View a project", nil, path, false)
+	op.Responses["200"] = response("Project details, task counts and your project admin status.", projectSchema(), projectExample)
 	return op
 }
 func updateContract(body, path *jsonschema.Schema) openapi.Operation {
 	op := projectOperation("updateProject", "Replace project name and planned dates", body, path, true)
-	op.Responses["200"] = response("Project details updated; code and store identity are unchanged. Planned end must be on or after planned start.", projectSchema(), projectExample)
+	op.Responses["200"] = response("Project details updated.", projectSchema(), projectExample)
 	return op
 }
 func removeContract(path *jsonschema.Schema) openapi.Operation {
 	op := projectOperation("removeProject", "Remove a project", nil, path, true)
-	op.Responses["204"] = openapi.Response{Description: "Project is removed from access and listings. Its code and store records are retained."}
+	op.Responses["204"] = openapi.Response{Description: "Project removed. Its code is never reused."}
 	return op
 }
 func pageSchema(item *jsonschema.Schema) *jsonschema.Schema {
 	return &jsonschema.Schema{Type: "object", Required: []string{"items", "next_cursor"}, Properties: map[string]*jsonschema.Schema{"items": {Type: "array", Items: item}, "next_cursor": {Type: "string"}}}
 }
 func listContract(query *jsonschema.Schema) openapi.Operation {
-	op := projectOperation("listProjects", "List accessible projects", nil, nil, false)
+	op := projectOperation("listProjects", "List projects", nil, nil, false)
 	op.Parameters = openapi.Parameters(query, "query")
-	op.Responses["200"] = response("Ascending order by id (default), name, start_date, completion_percentage or late_count, with id as tie-breaker. Task summaries exclude removed tasks. late_only selects projects with late tasks using the UTC date. Search is a literal case-insensitive substring of name or id. Limit defaults to 20, maximum 100. Continue with next_cursor using the same search and sort. Empty cursor ends the list.", pageSchema(projectSchema()), json.RawMessage(`{"items":[`+string(projectExample)+`],"next_cursor":""}`))
+	op.Responses["200"] = response("Projects with task counts and your admin status. Filter by search or late_only, and sort by id, name, start_date, completion_percentage or late_count. Pages default to 20, maximum 100; keep the same filters and sort with next_cursor.", pageSchema(projectSchema()), json.RawMessage(`{"items":[`+string(projectExample)+`],"next_cursor":""}`))
 	return op
 }
 func membersContract(query, path *jsonschema.Schema) openapi.Operation {
@@ -97,7 +97,7 @@ func changeMemberContract(body, path *jsonschema.Schema) openapi.Operation {
 }
 func removeMemberContract(path *jsonschema.Schema) openapi.Operation {
 	op := projectOperation("removeProjectMember", "Remove an existing project member", nil, path, true)
-	op.Responses["204"] = openapi.Response{Description: "Membership removed; project access changes on the next request."}
+	op.Responses["204"] = openapi.Response{Description: "Member removed."}
 	op.Responses["409"] = response("The last admin cannot be removed.", errorSchema(), json.RawMessage(`{"error":"project must retain at least one admin"}`))
 	return op
 }

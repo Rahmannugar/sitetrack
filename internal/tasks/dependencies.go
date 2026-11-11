@@ -17,10 +17,10 @@ func (s *Service) AddDependency(ctx context.Context, actor uuid.UUID, project, i
 		return Dependency{}, err
 	}
 	defer rollback(tx)
-	if _, err = s.read(ctx, q, project, id); err != nil {
+	if _, err = s.read(ctx, q, project, id, actor); err != nil {
 		return Dependency{}, err
 	}
-	target, err := s.read(ctx, q, project, prerequisite)
+	target, err := s.read(ctx, q, project, prerequisite, actor)
 	if err != nil {
 		return Dependency{}, err
 	}
@@ -42,7 +42,7 @@ func (s *Service) RemoveDependency(ctx context.Context, actor uuid.UUID, project
 		return err
 	}
 	defer rollback(tx)
-	if _, err = s.read(ctx, q, project, id); err != nil {
+	if _, err = s.read(ctx, q, project, id, actor); err != nil {
 		return err
 	}
 	count, err := q.RemoveDependency(ctx, taskdb.RemoveDependencyParams{ProjectID: project, DependentTaskID: id, PrerequisiteTaskID: prerequisite})
@@ -85,7 +85,7 @@ func (s *Service) Dependencies(ctx context.Context, actor uuid.UUID, project, id
 		return DependencyPage{}, err
 	}
 	defer rollback(tx)
-	if _, err = s.read(ctx, q, project, id); err != nil {
+	if _, err = s.read(ctx, q, project, id, actor); err != nil {
 		return DependencyPage{}, err
 	}
 	if input.Limit < 1 || input.Limit > 100 {
@@ -124,7 +124,7 @@ func (s *Service) Relationships(ctx context.Context, actor uuid.UUID, project, i
 		return RelationshipPage{}, err
 	}
 	defer rollback(tx)
-	if _, err = s.read(ctx, q, project, id); err != nil {
+	if _, err = s.read(ctx, q, project, id, actor); err != nil {
 		return RelationshipPage{}, err
 	}
 	if input.Limit < 1 || input.Limit > 100 || (input.Direction != "prerequisites" && input.Direction != "dependents") {

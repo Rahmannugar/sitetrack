@@ -255,6 +255,8 @@ func taskError(c *gin.Context, logger *slog.Logger, err error) {
 	switch {
 	case errors.Is(err, ErrInvalid), errors.Is(err, request.ErrInvalid):
 		status, message = http.StatusBadRequest, ErrInvalid.Error()
+	case errors.Is(err, ErrForbidden):
+		status, message = http.StatusForbidden, ErrForbidden.Error()
 	case errors.Is(err, ErrNotFound):
 		status, message = http.StatusNotFound, ErrNotFound.Error()
 	case errors.Is(err, ErrConflict):

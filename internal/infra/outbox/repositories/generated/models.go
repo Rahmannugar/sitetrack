@@ -3,3 +3,53 @@
 //   sqlc v1.31.1
 
 package outboxdb
+
+import (
+	"database/sql/driver"
+	"fmt"
+)
+
+type SitetrackOutboxStatus string
+
+const (
+	SitetrackOutboxStatusPending    SitetrackOutboxStatus = "pending"
+	SitetrackOutboxStatusProcessing SitetrackOutboxStatus = "processing"
+	SitetrackOutboxStatusPublished  SitetrackOutboxStatus = "published"
+	SitetrackOutboxStatusFailed     SitetrackOutboxStatus = "failed"
+	SitetrackOutboxStatusCancelled  SitetrackOutboxStatus = "cancelled"
+)
+
+func (e *SitetrackOutboxStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = SitetrackOutboxStatus(s)
+	case string:
+		*e = SitetrackOutboxStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for SitetrackOutboxStatus: %T", src)
+	}
+	return nil
+}
+
+type NullSitetrackOutboxStatus struct {
+	SitetrackOutboxStatus SitetrackOutboxStatus
+	Valid                 bool // Valid is true if SitetrackOutboxStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullSitetrackOutboxStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.SitetrackOutboxStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.SitetrackOutboxStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullSitetrackOutboxStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.SitetrackOutboxStatus), nil
+}

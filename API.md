@@ -2,7 +2,7 @@
 
 ## Authentication
 
-Register an account and queue its verification email.
+Create an account.
 `POST /auth/signup`
 
 Verify an email address using its OTP.
@@ -11,27 +11,33 @@ Verify an email address using its OTP.
 Request another verification code.
 `POST /auth/resend-verification`
 
-Log in and replace the previous session.
+Log in.
 `POST /auth/login`
 
-Renew JWT access and rotate the refresh token.
+Refresh your session.
 `POST /auth/refresh`
 
 Read your profile.
 `GET /auth/me`
 
-Revoke your current session.
+Log out.
 `POST /auth/logout`
+
+Request a password reset code.
+`POST /auth/forgot-password`
+
+Reset your password using the OTP.
+`POST /auth/reset-password`
 
 ## Projects
 
-Create a project, its store and creator admin.
+Create a project.
 `POST /projects`
 
-List accessible projects.
+List projects.
 `GET /projects`
 
-Read an accessible project.
+View a project.
 `GET /projects/:id`
 
 Replace a project's name and planned dates.
@@ -75,7 +81,7 @@ Mark a task as done.
 Reopen a task.
 `POST /projects/:id/tasks/:task_id/reopen`
 
-List direct prerequisites.
+List task prerequisites.
 `GET /projects/:id/tasks/:task_id/dependencies`
 
 Add a prerequisite.
@@ -84,7 +90,7 @@ Add a prerequisite.
 Remove a prerequisite.
 `DELETE /projects/:id/tasks/:task_id/dependencies/:prerequisite_id`
 
-List reachable prerequisites or dependents.
+List all prerequisites or dependent tasks.
 `GET /projects/:id/tasks/:task_id/relationships`
 
 ## Invitations
@@ -112,7 +118,7 @@ Count your unread notifications.
 Mark a notification as read.
 `PATCH /notifications/:id/read`
 
-Mark all accessible notifications as read.
+Mark all your notifications as read.
 `PATCH /notifications/read-all`
 
 Stream your notification updates.
@@ -123,7 +129,7 @@ Stream your notification updates.
 Report whether the API process is serving requests.
 `GET /health/live`
 
-Check whether PostgreSQL is reachable through the API's connection pool.
+Check database readiness.
 `GET /health/ready`
 
 ## API reference

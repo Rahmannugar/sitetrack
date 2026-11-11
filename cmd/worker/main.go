@@ -60,15 +60,16 @@ func run(ctx context.Context, bootstrap *slog.Logger) error {
 			return err
 		}
 	} else {
-		monitoring.Logger.Warn("verification email processing awaits a Resend API key")
+		monitoring.Logger.Warn("email processing awaits a Resend API key")
 	}
-	verification := authentication.NewVerificationWorker(pool, cipher, sender, monitoring)
+	emails := authentication.NewEmailWorker(pool, cipher, sender, monitoring)
 	handlers := make(map[string]outbox.Handler)
 	// We leave email jobs queued while the provider is unconfigured.
 	if sender != nil {
-		handlers["email.verification"] = verification.Handle
+		handlers["email.verification"] = emails.HandleVerification
+		handlers["email.password_reset"] = emails.HandlePasswordReset
 	}
-	worker, err := outbox.NewWorker(pool, handlers, verification.CleanupOTPs, monitoring)
+	worker, err := outbox.NewWorker(pool, handlers, emails.CleanupOTPs, monitoring)
 	if err != nil {
 		return err
 	}

@@ -12,6 +12,9 @@ var (
 	ErrInvalidVerification = errors.New("invalid or expired verification code")
 	ErrInvalidCredentials  = errors.New("invalid email or password")
 	ErrUnauthenticated     = errors.New("authentication required")
+	ErrEmailRegistered     = errors.New("email already registered")
+	ErrEmailUnverified     = errors.New("verify your email before logging in")
+	ErrInvalidReset        = errors.New("invalid or expired password reset code")
 )
 
 type SignupInput struct {
@@ -59,4 +62,10 @@ type VerificationInput struct {
 
 type ResendInput struct {
 	Email string `json:"email" binding:"required,email,max=254"`
+}
+
+type ResetPasswordInput struct {
+	Email    string `json:"email" binding:"required,email,max=254"`
+	Code     string `json:"code" binding:"required,len=6,number"`
+	Password string `json:"password" binding:"required,min=12,max=128"`
 }

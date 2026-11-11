@@ -35,14 +35,16 @@ tasks:
       - docker compose up -d --wait postgres
 
   up:
-    desc: Start PostgreSQL, apply migrations and start the API
+    desc: Start the stack and remove the completed migration container
     cmds:
-      - docker compose up -d
+      - docker compose up -d --wait
+      - docker compose rm -f migrate
 
   up-build:
     desc: Rebuild application images and start the stack
     cmds:
-      - docker compose up -d --build
+      - docker compose up -d --build --wait
+      - docker compose rm -f migrate
 
   down:
     desc: Stop the stack and retain database contents

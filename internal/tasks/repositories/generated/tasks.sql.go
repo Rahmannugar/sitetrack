@@ -36,16 +36,17 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) error {
 }
 
 const getTask = `-- name: GetTask :one
-SELECT t.id, t.project_id, t.name, t.start_date, t.end_date, t.status, t.created_at, t.deleted_at, (t.status<>'done' AND (t.end_date<$1::date OR (t.status='not_started' AND t.start_date<$1)))::boolean AS late,
+SELECT t.id, t.project_id, t.name, t.start_date, t.end_date, t.status, t.created_at, t.deleted_at, EXISTS(SELECT 1 FROM sitetrack.project_memberships m WHERE m.project_id=t.project_id AND m.user_id=$1 AND m.is_admin)::boolean AS is_admin, (t.status<>'done' AND (t.end_date<$2::date OR (t.status='not_started' AND t.start_date<$2)))::boolean AS late,
     (t.status<>'done' AND EXISTS(SELECT 1 FROM sitetrack.task_dependencies d WHERE d.dependent_task_id=t.id AND d.status='waiting'))::boolean AS blocked,
     (SELECT count(*) FROM sitetrack.task_dependencies d WHERE d.dependent_task_id=t.id)::bigint AS dependency_count,
     (SELECT count(*) FROM sitetrack.task_dependencies d WHERE d.prerequisite_task_id=t.id)::bigint AS dependent_count,
     ARRAY(SELECT d.prerequisite_task_id FROM sitetrack.task_dependencies d WHERE d.dependent_task_id=t.id ORDER BY d.prerequisite_task_id LIMIT 20)::text[] AS depends_on,
     NOT EXISTS(SELECT 1 FROM sitetrack.task_dependencies d JOIN sitetrack.tasks successor ON successor.id=d.dependent_task_id WHERE d.prerequisite_task_id=t.id AND successor.status<>'not_started') AS can_reopen
-FROM sitetrack.tasks t WHERE t.project_id=$2 AND t.id=$3 AND t.deleted_at IS NULL
+FROM sitetrack.tasks t WHERE t.project_id=$3 AND t.id=$4 AND t.deleted_at IS NULL
 `
 
 type GetTaskParams struct {
+	Actor     uuid.UUID
 	Today     pgtype.Date
 	ProjectID string
 	ID        string
@@ -57,9 +58,10 @@ type GetTaskRow struct {
 	Name            string
 	StartDate       pgtype.Date
 	EndDate         pgtype.Date
-	Status          string
+	Status          SitetrackTaskStatus
 	CreatedAt       pgtype.Timestamptz
 	DeletedAt       pgtype.Timestamptz
+	IsAdmin         bool
 	Late            bool
 	Blocked         bool
 	DependencyCount int64
@@ -68,9 +70,14 @@ type GetTaskRow struct {
 	CanReopen       bool
 }
 
-// We require completed prerequisites on started tasks, so direct waiting edges are sufficient for Blocked.
+// We require completed dependencies on started tasks, so direct waiting dependencies determine Blocked.
 func (q *Queries) GetTask(ctx context.Context, arg GetTaskParams) (GetTaskRow, error) {
-	row := q.db.QueryRow(ctx, getTask, arg.Today, arg.ProjectID, arg.ID)
+	row := q.db.QueryRow(ctx, getTask,
+		arg.Actor,
+		arg.Today,
+		arg.ProjectID,
+		arg.ID,
+	)
 	var i GetTaskRow
 	err := row.Scan(
 		&i.ID,
@@ -81,6 +88,7 @@ func (q *Queries) GetTask(ctx context.Context, arg GetTaskParams) (GetTaskRow, e
 		&i.Status,
 		&i.CreatedAt,
 		&i.DeletedAt,
+		&i.IsAdmin,
 		&i.Late,
 		&i.Blocked,
 		&i.DependencyCount,
@@ -93,16 +101,16 @@ func (q *Queries) GetTask(ctx context.Context, arg GetTaskParams) (GetTaskRow, e
 
 const listTasks = `-- name: ListTasks :many
 WITH candidates AS (
-SELECT t.id, t.project_id, t.name, t.start_date, t.end_date, t.status, t.created_at, t.deleted_at, (t.status<>'done' AND (t.end_date<$14::date OR (t.status='not_started' AND t.start_date<$14)))::boolean AS late,
+SELECT t.id, t.project_id, t.name, t.start_date, t.end_date, t.status, t.created_at, t.deleted_at, EXISTS(SELECT 1 FROM sitetrack.project_memberships m WHERE m.project_id=t.project_id AND m.user_id=$14 AND m.is_admin)::boolean AS is_admin, (t.status<>'done' AND (t.end_date<$15::date OR (t.status='not_started' AND t.start_date<$15)))::boolean AS late,
     (t.status<>'done' AND EXISTS(SELECT 1 FROM sitetrack.task_dependencies d WHERE d.dependent_task_id=t.id AND d.status='waiting'))::boolean AS blocked,
     (SELECT count(*) FROM sitetrack.task_dependencies d WHERE d.dependent_task_id=t.id)::bigint AS dependency_count,
     (SELECT count(*) FROM sitetrack.task_dependencies d WHERE d.prerequisite_task_id=t.id)::bigint AS dependent_count,
     ARRAY(SELECT d.prerequisite_task_id FROM sitetrack.task_dependencies d WHERE d.dependent_task_id=t.id ORDER BY d.prerequisite_task_id LIMIT 20)::text[] AS depends_on,
     NOT EXISTS(SELECT 1 FROM sitetrack.task_dependencies d JOIN sitetrack.tasks successor ON successor.id=d.dependent_task_id WHERE d.prerequisite_task_id=t.id AND successor.status<>'not_started') AS can_reopen
-FROM sitetrack.tasks t WHERE t.project_id=$15 AND t.deleted_at IS NULL
+FROM sitetrack.tasks t WHERE t.project_id=$16 AND t.deleted_at IS NULL
 )
-SELECT id, project_id, name, start_date, end_date, status, created_at, deleted_at, late, blocked, dependency_count, dependent_count, depends_on, can_reopen FROM candidates t
-WHERE ($1::text='' OR t.status=$1)
+SELECT id, project_id, name, start_date, end_date, status, created_at, deleted_at, is_admin, late, blocked, dependency_count, dependent_count, depends_on, can_reopen FROM candidates t
+WHERE ($1::text='' OR t.status=NULLIF($1::text,'')::sitetrack.task_status)
 AND ($2::text='' OR position(lower($2) in lower(t.name))>0 OR position(lower($2) in lower(t.id))>0)
 AND ($3::boolean IS NULL OR t.late=$3)
 AND ($4::boolean IS NULL OR t.blocked=$4)
@@ -144,6 +152,7 @@ type ListTasksParams struct {
 	AfterDate  pgtype.Date
 	AfterValue string
 	PageSize   int32
+	Actor      uuid.UUID
 	Today      pgtype.Date
 	ProjectID  string
 }
@@ -154,9 +163,10 @@ type ListTasksRow struct {
 	Name            string
 	StartDate       pgtype.Date
 	EndDate         pgtype.Date
-	Status          string
+	Status          SitetrackTaskStatus
 	CreatedAt       pgtype.Timestamptz
 	DeletedAt       pgtype.Timestamptz
+	IsAdmin         bool
 	Late            bool
 	Blocked         bool
 	DependencyCount int64
@@ -180,6 +190,7 @@ func (q *Queries) ListTasks(ctx context.Context, arg ListTasksParams) ([]ListTas
 		arg.AfterDate,
 		arg.AfterValue,
 		arg.PageSize,
+		arg.Actor,
 		arg.Today,
 		arg.ProjectID,
 	)
@@ -199,6 +210,7 @@ func (q *Queries) ListTasks(ctx context.Context, arg ListTasksParams) ([]ListTas
 			&i.Status,
 			&i.CreatedAt,
 			&i.DeletedAt,
+			&i.IsAdmin,
 			&i.Late,
 			&i.Blocked,
 			&i.DependencyCount,
@@ -239,7 +251,7 @@ func (q *Queries) NextTaskNumber(ctx context.Context, id string) (int64, error) 
 }
 
 const projectAccess = `-- name: ProjectAccess :one
-SELECT u.id FROM sitetrack.users u LEFT JOIN sitetrack.project_memberships m ON m.user_id=u.id AND m.project_id=$1
+SELECT COALESCE(m.is_admin,false)::boolean AS is_admin FROM sitetrack.users u LEFT JOIN sitetrack.project_memberships m ON m.user_id=u.id AND m.project_id=$1
 WHERE u.id=$2 AND (u.role='superadmin' OR m.user_id IS NOT NULL)
 `
 
@@ -248,11 +260,11 @@ type ProjectAccessParams struct {
 	Actor     uuid.UUID
 }
 
-func (q *Queries) ProjectAccess(ctx context.Context, arg ProjectAccessParams) (uuid.UUID, error) {
+func (q *Queries) ProjectAccess(ctx context.Context, arg ProjectAccessParams) (bool, error) {
 	row := q.db.QueryRow(ctx, projectAccess, arg.ProjectID, arg.Actor)
-	var id uuid.UUID
-	err := row.Scan(&id)
-	return id, err
+	var is_admin bool
+	err := row.Scan(&is_admin)
+	return is_admin, err
 }
 
 const removeTask = `-- name: RemoveTask :exec
@@ -301,7 +313,7 @@ UPDATE sitetrack.tasks SET status=$3 WHERE project_id=$1 AND id=$2 AND deleted_a
 type TransitionTaskParams struct {
 	ProjectID string
 	ID        string
-	Status    string
+	Status    SitetrackTaskStatus
 }
 
 func (q *Queries) TransitionTask(ctx context.Context, arg TransitionTaskParams) error {
